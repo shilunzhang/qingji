@@ -14,7 +14,7 @@ final class Budget {
     var scopeRaw: String = BudgetScope.overall.rawValue
     /// 月度金额（分）
     var amountCents: Int64 = 0
-    var createdAt: Date = .now
+    var createdAt: Date = Date.now
 
     @Relationship var category: Category? = nil
 

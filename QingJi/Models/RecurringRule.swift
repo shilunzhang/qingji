@@ -30,13 +30,13 @@ final class RecurringRule {
     var dayOfMonth: Int = 1
     var weekday: Int = 1
     var intervalDays: Int = 1
-    var startDate: Date = .now
+    var startDate: Date = Date.now
     var endDate: Date? = nil
     /// 最近一次已入账的执行日期；nil 表示尚未入过账
     var lastPostedDate: Date? = nil
     var isActive: Bool = true
     var note: String = ""
-    var createdAt: Date = .now
+    var createdAt: Date = Date.now
 
     @Relationship var category: Category? = nil
     @Relationship var account: Account? = nil
@@ -51,7 +51,7 @@ final class RecurringRule {
          dayOfMonth: Int = 1,
          weekday: Int = 1,
          intervalDays: Int = 1,
-         startDate: Date = .now,
+         startDate: Date = Date.now,
          endDate: Date? = nil,
          note: String = "") {
         self.name = name

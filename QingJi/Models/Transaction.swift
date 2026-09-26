@@ -25,10 +25,10 @@ final class Transaction {
     var amountCents: Int64 = 0
     var currencyCode: String = "CNY"
     /// 交易时间（允许补记过去时间）
-    var date: Date = .now
+    var date: Date = Date.now
     var note: String = ""
-    var createdAt: Date = .now
-    var updatedAt: Date = .now
+    var createdAt: Date = Date.now
+    var updatedAt: Date = Date.now
     /// 由周期规则生成时记录来源（文档 §4.4）
     var recurringRuleID: UUID? = nil
     /// 外部流水号（账单导入的去重主键，文档 F-10）
@@ -38,7 +38,7 @@ final class Transaction {
     @Relationship var toAccount: Account? = nil
     @Relationship var category: Category? = nil
     @Relationship(inverse: \Tag.transactions) var tags: [Tag]? = nil
-    @Relationship(.cascade, inverse: \Attachment.transaction) var attachments: [Attachment]? = nil
+    @Relationship(deleteRule: .cascade, inverse: \Attachment.transaction) var attachments: [Attachment]? = nil
 
     var type: TxKind { TxKind(rawValue: kind) ?? .expense }
     /// 元（Decimal），仅供展示/图表
@@ -46,7 +46,7 @@ final class Transaction {
 
     init(kind: TxKind,
          amountCents: Int64,
-         date: Date = .now,
+         date: Date = Date.now,
          account: Account? = nil,
          toAccount: Account? = nil,
          category: Category? = nil,

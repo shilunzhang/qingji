@@ -50,7 +50,7 @@ final class Account {
     var dueDay: Int = 1
     var sortOrder: Int = 0
     var isArchived: Bool = false
-    var createdAt: Date = .now
+    var createdAt: Date = Date.now
 
     var kind: AccountKind { AccountKind(rawValue: kindRaw) ?? .cash }
 

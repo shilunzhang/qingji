@@ -8,7 +8,7 @@ final class Attachment {
     /// JPEG 数据；写入前压缩至长边 ≤1200px（文档 §8 风险表）
     @Attribute(.externalStorage) var data: Data = Data()
     var mimeType: String = "image/jpeg"
-    var createdAt: Date = .now
+    var createdAt: Date = Date.now
 
     @Relationship var transaction: Transaction? = nil
 

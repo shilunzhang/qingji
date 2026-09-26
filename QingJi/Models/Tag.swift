@@ -7,7 +7,7 @@ final class Tag {
     var id: UUID = UUID()
     var name: String = ""
     var colorHex: String = "78909C"
-    var createdAt: Date = .now
+    var createdAt: Date = Date.now
 
     @Relationship var transactions: [Transaction]? = nil
 
