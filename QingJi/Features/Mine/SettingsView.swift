@@ -44,6 +44,8 @@ struct SettingsView: View {
                 }
 
                 Section("数据") {
+                    NavigationLink("账单导入") { ImportView() }
+                    NavigationLink("截图记账") { ScreenshotImportView() }
                     if let exportURL {
                         ShareLink(item: exportURL) {
                             Label("分享账单 CSV", systemImage: "square.and.arrow.up")

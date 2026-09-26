@@ -31,6 +31,8 @@ final class Transaction {
     var updatedAt: Date = .now
     /// 由周期规则生成时记录来源（文档 §4.4）
     var recurringRuleID: UUID? = nil
+    /// 外部流水号（账单导入的去重主键，文档 F-10）
+    var externalID: String = ""
 
     @Relationship var account: Account? = nil
     @Relationship var toAccount: Account? = nil
@@ -49,7 +51,8 @@ final class Transaction {
          toAccount: Account? = nil,
          category: Category? = nil,
          note: String = "",
-         recurringRuleID: UUID? = nil) {
+         recurringRuleID: UUID? = nil,
+         externalID: String = "") {
         self.kind = kind.rawValue
         self.amountCents = amountCents
         self.date = date
@@ -58,6 +61,7 @@ final class Transaction {
         self.category = category
         self.note = note
         self.recurringRuleID = recurringRuleID
+        self.externalID = externalID
     }
 
     /// 行标题：分类名 / 转账 / 未分类

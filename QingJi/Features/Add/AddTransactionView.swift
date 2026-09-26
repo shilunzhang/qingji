@@ -6,7 +6,15 @@ import UIKit
 /// 记账页（文档 F-01）：支出/收入/转账 + 自定义键盘 + 分类/账户选择 + 备注凭证
 struct AddTransactionView: View {
     enum Mode {
-        case create(TxKind)
+        /// 预填数据（供 OCR/自动化入口复用记账页）
+        struct Prefill {
+            var amountCents: Int64? = nil
+            var date: Date? = nil
+            var note: String? = nil
+            var categoryID: UUID? = nil
+        }
+
+        case create(TxKind, Prefill?)
         case edit(Transaction)
     }
 
@@ -439,11 +447,19 @@ struct AddTransactionView: View {
         guard !didSetup else { return }
         didSetup = true
         switch mode {
-        case .create(let initialKind):
+        case .create(let initialKind, let prefill):
             kind = initialKind
             account = accounts.first { !$0.isArchived }
             selectedCategory = CategoryPredictor.topCategory(
                 categories: categories, transactions: history, kind: initialKind, at: Date())
+            if let prefill {
+                if let cents = prefill.amountCents { amountText = Money.inputString(fromCents: cents) }
+                if let prefillDate = prefill.date { date = prefillDate }
+                if let prefillNote = prefill.note { note = prefillNote }
+                if let categoryID = prefill.categoryID {
+                    selectedCategory = categories.first { $0.id == categoryID }
+                }
+            }
         case .edit(let tx):
             kind = tx.type
             amountText = Money.inputString(fromCents: tx.amountCents)
@@ -462,7 +478,7 @@ struct AddTransactionView: View {
         let effectiveCategory = kind == .transfer ? nil : selectedCategory
 
         switch mode {
-        case .create(let _):
+        case .create:
             let tx = Transaction(kind: kind,
                                  amountCents: cents,
                                  date: date,

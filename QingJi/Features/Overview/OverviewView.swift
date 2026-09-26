@@ -10,6 +10,7 @@ struct OverviewView: View {
 
     @State private var monthAnchor = Date()
     @State private var editing: Transaction?
+    @State private var showScreenshot = false
 
     var body: some View {
         NavigationStack {
@@ -20,8 +21,23 @@ struct OverviewView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("明细")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showScreenshot = true
+                    } label: {
+                        Image(systemName: "camera.viewfinder")
+                    }
+                    .accessibilityLabel("截图记账")
+                }
+            }
             .sheet(item: $editing) { tx in
                 AddTransactionView(mode: .edit(tx))
+            }
+            .sheet(isPresented: $showScreenshot) {
+                NavigationStack {
+                    ScreenshotImportView()
+                }
             }
         }
     }

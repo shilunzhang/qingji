@@ -46,7 +46,7 @@ struct RootTabView: View {
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            AddTransactionView(mode: .create(.expense))
+            AddTransactionView(mode: .create(.expense, nil))
         }
         .onChange(of: scenePhase) { _, phase in
             appLock.handleScenePhase(phase)
