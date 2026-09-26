@@ -34,7 +34,7 @@ final class AlbumScanModel: ObservableObject {
         isScanning = true
         defer { isScanning = false }
 
-        let since = AlbumScanStore.lastScanDate
+        let since = AlbumScanStore.lastScanDate()
         let assets = PhotoScanService.fetchNewScreenshots(after: since, limit: 10)
 
         var newDrafts: [AlbumScanDraft] = []
