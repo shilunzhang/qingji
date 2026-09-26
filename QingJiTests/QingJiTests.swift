@@ -42,7 +42,7 @@ final class MoneyTests: XCTestCase {
     func testRoundTrip() {
         let cents = Money.cents(fromString: "88.88")
         XCTAssertEqual(cents, 8888)
-        XCTAssertEqual(Money.inputString(fromCents: cents), "88.88")
+        XCTAssertEqual(Money.inputString(fromCents: cents ?? 0), "88.88")
         XCTAssertEqual(Money.cents(fromYuan: Money.yuan(fromCents: 12345)), 12345)
     }
 
