@@ -510,7 +510,7 @@ struct AddTransactionView: View {
             pendingDuplicate = duplicated
             showDuplicateConfirm = true
         case .block(let duplicated):
-            duplicateBlockMessage = "已存在 \($0.summary)。当前防重策略为「阻止」，如确需保存请在「我的 → 自动记账」中调整灵敏度。"
+            duplicateBlockMessage = "已存在 \(duplicated.summary)。当前防重策略为「阻止」，如确需保存请在「我的 → 自动记账」中调整灵敏度。"
         }
     }
 
