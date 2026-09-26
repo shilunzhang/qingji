@@ -25,3 +25,39 @@ jobs:
             -scheme QingJi \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             CODE_SIGNING_ALLOWED=NO
+
+  # 产出未签名 ipa 工件：供 Windows 端爱思助手/Sideloadly 用免费 Apple ID 重签安装（文档 T13）
+  build-ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build unsigned .app (Release, 真机 arm64)
+        run: |
+          xcodebuild build \
+            -project QingJi.xcodeproj \
+            -scheme QingJi \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_ENTITLEMENTS= \
+            -derivedDataPath build
+
+      - name: Package unsigned ipa
+        run: |
+          mkdir -p build/Payload
+          cp -R "build/Build/Products/Release-iphoneos/QingJi.app" build/Payload/
+          cd build
+          zip -qry QingJi-unsigned.ipa Payload
+
+      - name: Upload ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QingJi-unsigned-ipa
+          path: build/QingJi-unsigned.ipa
+          retention-days: 14
