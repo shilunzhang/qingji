@@ -67,6 +67,8 @@ struct AccountEditorView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
+    @Query(sort: \Account.sortOrder) private var accounts: [Account]
+
     private let existing: Account?
 
     @State private var name = ""

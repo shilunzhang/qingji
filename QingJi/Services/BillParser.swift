@@ -287,7 +287,7 @@ enum BillDedup {
         var fuzzy: Set<String> = []
         for tx in transactions {
             if !tx.externalID.isEmpty { externalIDs.insert(tx.externalID) }
-            fuzzy.insert(fuzzyKey(kind: tx.kind, date: tx.date, amountCents: tx.amountCents))
+            fuzzy.insert(fuzzyKey(kind: tx.type, date: tx.date, amountCents: tx.amountCents))
         }
         return Keys(externalIDs: externalIDs, fuzzy: fuzzy)
     }
