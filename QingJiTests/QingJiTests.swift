@@ -348,10 +348,12 @@ final class CSVExporterTests: XCTestCase {
         let tx = Transaction(kind: .expense, amountCents: 1234, account: cash, category: food, note: "午饭,加蛋")
         let url = CSVExporter.export(transactions: [tx])
         XCTAssertNotNil(url)
+        // BOM 断言基于原始字节（String(contentsOf:) 读取时会剥离 BOM）
+        let raw = try Data(contentsOf: url!)
+        XCTAssertTrue(raw.starts(with: [0xEF, 0xBB, 0xBF]), "缺少 UTF-8 BOM")
         let content = try String(contentsOf: url!, encoding: .utf8)
-        XCTAssertTrue(content.hasPrefix("\u{FEFF}")) // BOM
         XCTAssertTrue(content.contains("日期,类型,分类,账户,转入账户,金额,备注"))
-        XCTAssertTrue(content.contains("\"午饭,加蛋\"")) // 逗号转义
+        XCTAssertTrue(content.contains("\"午饭,加蛋\""))
         XCTAssertTrue(content.contains(CSVExporter.plainYuanString(1234)))
         XCTAssertEqual(CSVExporter.plainYuanString(1234), "12.34")
     }
