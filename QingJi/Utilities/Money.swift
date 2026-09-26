@@ -10,10 +10,16 @@ enum Money {
         Decimal(cents) / Decimal(100)
     }
 
-    /// 元（用户输入的 Decimal）-> 分，四舍五入到分
+    /// 元（用户输入的 Decimal）-> 分，四舍五入到分（Decimal 无 FloatingPoint API，用 NSDecimalNumber 舍入）
     static func cents(fromYuan value: Decimal) -> Int64 {
-        let scaled = (value * Decimal(100)).rounded(.toNearestOrEven)
-        return Int64(NSDecimalNumber(decimal: scaled).int64Value)
+        let scaled = NSDecimalNumber(decimal: value).multiplying(by: 100)
+        let handler = NSDecimalNumberHandler(roundingMode: .plain,
+                                             scale: 0,
+                                             raiseOnExactness: false,
+                                             raiseOnOverflow: false,
+                                             raiseOnUnderflow: false,
+                                             raiseOnDivideByZero: false)
+        return scaled.rounding(accordingToBehavior: handler).int64Value
     }
 
     /// 用户输入的金额字符串（"12" / "12.5" / "12.56"）-> 分；非法返回 nil

@@ -24,5 +24,4 @@ jobs:
             -project QingJi.xcodeproj \
             -scheme QingJi \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
-            CODE_SIGNING_ALLOWED=NO \
-            | xcbeautify || exit 1
+            CODE_SIGNING_ALLOWED=NO

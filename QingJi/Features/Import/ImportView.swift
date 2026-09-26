@@ -17,13 +17,7 @@ struct ImportView: View {
 
     var body: some View {
         List {
-            if importedCount > 0 && result == nil {
-                Section {
-                    Label("已导入 \(importedCount) 笔账目，可在明细页查看", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(Theme.income)
-                }
-            }
-
+            importedBanner
             if let result {
                 summarySection(result)
                 mappingSection(result)
@@ -39,12 +33,27 @@ struct ImportView: View {
                       allowsMultipleSelection: false) { selection in
             handleSelection(selection)
         }
-        .alert("导入失败", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } })) {
+        .alert("导入失败", isPresented: errorAlert) {
             Button("好的", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    private var errorAlert: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var importedBanner: some View {
+        if importedCount > 0 && result == nil {
+            Section {
+                Label("已导入 \(importedCount) 笔账目，可在明细页查看", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(Theme.income)
+            }
         }
     }
 
@@ -58,9 +67,8 @@ struct ImportView: View {
         return false
     }
 
-    private var methods: [String] {
-        guard let result else { return [] }
-        return Array(Set(result.rows.map(\.payMethod)).filter { !$0.isEmpty }).sorted()
+    private func methods(in parseResult: BillParseResult) -> [String] {
+        Array(Set(parseResult.rows.map(\.payMethod)).filter { !$0.isEmpty }).sorted()
     }
 
     private var activeAccounts: [Account] { accounts.filter { !$0.isArchived } }
@@ -86,6 +94,59 @@ struct ImportView: View {
         }
     }
 
+    private func mappingSection(_ parseResult: BillParseResult) -> some View {
+        Section {
+            ForEach(methods(in: parseResult), id: \.self) { method in
+                HStack {
+                    Text(method)
+                        .lineLimit(1)
+                    Spacer()
+                    methodMenu(method)
+                }
+            }
+        } header: {
+            Text("支付方式 → 账户")
+        } footer: {
+            Text("未列出的支付方式将使用默认账户")
+        }
+    }
+
+    @ViewBuilder
+    private func methodMenu(_ method: String) -> some View {
+        let current = methodMap[method]?.name ?? "选择账户"
+        Menu(current) {
+            ForEach(activeAccounts) { account in
+                Button {
+                    methodMap[method] = account
+                } label: {
+                    HStack {
+                        Text(account.name)
+                        if methodMap[method]?.id == account.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        }
+        .foregroundStyle(Color.accentColor)
+    }
+
+    private func importSection(_ parseResult: BillParseResult) -> some View {
+        let keys = dedupKeys
+        let importable = parseResult.rows.filter { !isDuplicate($0, keys: keys) }.count
+        let title = importable > 0 ? "导入 \(importable) 笔" : "没有可导入的新账目"
+        return Section {
+            Button {
+                performImport(parseResult)
+            } label: {
+                Text(title)
+                    .frame(maxWidth: .infinity)
+                    .fontWeight(.semibold)
+            }
+            .disabled(importable == 0 || activeAccounts.isEmpty)
+        }
+    }
+
     private func summarySection(_ parseResult: BillParseResult) -> some View {
         let keys = dedupKeys
         let duplicates = parseResult.rows.filter { isDuplicate($0, keys: keys) }.count
@@ -101,37 +162,6 @@ struct ImportView: View {
             LabeledContent("收入合计", value: Money.string(fromCents: income))
             LabeledContent("自动剔除", value: "\(parseResult.skippedLines) 行")
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    private func mappingSection(_ result: BillParseResult) -> some View {
-        Section {
-            ForEach(methods, id: \.self) { method in
-                HStack {
-                    Text(method)
-                        .lineLimit(1)
-                    Spacer()
-                    Menu(methodMap[method]?.name ?? "选择账户") {
-                        ForEach(activeAccounts) { account in
-                            Button {
-                                methodMap[method] = account
-                            } label: {
-                                HStack {
-                                    Text(account.name)
-                                    if methodMap[method]?.id == account.id {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .foregroundStyle(.accentColor)
-                }
-            }
-        } header: {
-            Text("支付方式 → 账户")
-        } footer: {
-            Text("未列出的支付方式将使用默认账户")
         }
     }
 
@@ -178,21 +208,6 @@ struct ImportView: View {
 
     private func rowText(_ row: ParsedBillRow) -> String {
         row.counterparty.isEmpty ? row.product : row.counterparty
-    }
-
-    private func importSection(_ result: BillParseResult) -> some View {
-        let keys = dedupKeys
-        let importable = result.rows.filter { !isDuplicate($0, keys: keys) }.count
-        return Section {
-            Button {
-                performImport(result)
-            } label: {
-                Text(importable > 0 ? "导入 \(importable) 笔" : "没有可导入的新账目")
-                    .frame(maxWidth: .infinity)
-                    .fontWeight(.semibold)
-            }
-            .disabled(importable == 0 || activeAccounts.isEmpty)
-        }
     }
 
     // MARK: - 动作
