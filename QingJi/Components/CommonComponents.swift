@@ -1,0 +1,137 @@
+import SwiftUI
+
+/// 分类/账户圆形图标
+struct IconBadge: View {
+    let icon: String
+    let colorHex: String
+    var size: CGFloat = 36
+
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: size * 0.45, weight: .medium))
+            .foregroundStyle(Color(hex: colorHex))
+            .frame(width: size, height: size)
+            .background(Color.categoryBackground(colorHex))
+            .clipShape(Circle())
+    }
+}
+
+/// 金额文本（文档 6.3 展示约定）：支出 - / 收入 + / 转账无符号
+struct AmountText: View {
+    let cents: Int64
+    let kind: TxKind
+    var font: Font = .body.weight(.medium)
+
+    init(_ cents: Int64, kind: TxKind, font: Font = .body.weight(.medium)) {
+        self.cents = cents
+        self.kind = kind
+        self.font = font
+    }
+
+    var color: Color {
+        switch kind {
+        case .income: return Theme.income
+        case .transfer: return Theme.transfer
+        case .expense: return .primary
+        }
+    }
+
+    var body: some View {
+        Text(displayString)
+            .font(font)
+            .foregroundStyle(color)
+            .monospacedDigit()
+    }
+
+    var displayString: String {
+        switch kind {
+        case .expense: return "-" + Money.string(fromCents: cents)
+        case .income: return "+" + Money.string(fromCents: cents)
+        case .transfer: return Money.string(fromCents: cents)
+        }
+    }
+}
+
+/// 空态占位
+struct EmptyStateView: View {
+    let icon: String
+    let title: String
+    let hint: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 40))
+                .foregroundStyle(.tertiary)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Text(hint)
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+    }
+}
+
+/// 月份/周期切换导航头
+struct PeriodNavHeader: View {
+    let title: String
+    let onPrev: () -> Void
+    let onNext: () -> Void
+
+    var body: some View {
+        HStack {
+            Button(action: onPrev) {
+                Image(systemName: "chevron.left")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+            Text(title)
+                .font(.headline)
+            Spacer()
+
+            Button(action: onNext) {
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+/// 收支汇总条
+struct TotalsBar: View {
+    let expenseCents: Int64
+    let incomeCents: Int64
+
+    var balanceCents: Int64 { incomeCents - expenseCents }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            totalItem(label: "支出", cents: expenseCents, color: .primary)
+            totalItem(label: "收入", cents: incomeCents, color: Theme.income)
+            totalItem(label: "结余", cents: balanceCents, color: balanceCents >= 0 ? .primary : Theme.alert)
+        }
+    }
+
+    private func totalItem(label: String, cents: Int64, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(Money.string(fromCents: cents))
+                .font(.headline)
+                .foregroundStyle(color)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

@@ -1,0 +1,166 @@
+import SwiftUI
+import SwiftData
+
+/// 明细页（文档 F-01/F-02）：账户条 + 月汇总 + 按日分组流水
+struct OverviewView: View {
+    @Environment(\.modelContext) private var context
+
+    @Query(sort: \Transaction.date, order: .reverse) private var transactions: [Transaction]
+    @Query(sort: \Account.sortOrder) private var accounts: [Account]
+
+    @State private var monthAnchor = Date()
+    @State private var editing: Transaction?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                monthSection
+                accountSection
+                transactionSections
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("明细")
+            .sheet(item: $editing) { tx in
+                AddTransactionView(mode: .edit(tx))
+            }
+        }
+    }
+
+    // MARK: - 数据
+
+    private var monthTx: [Transaction] {
+        LedgerService.transactions(transactions, in: DateHelpers.range(of: .month, containing: monthAnchor))
+    }
+
+    private var monthTotals: (expense: Int64, income: Int64) {
+        LedgerService.totals(in: monthTx)
+    }
+
+    /// 按日分组的展示模型（元组不支持 KeyPath，需 Identifiable 结构体）
+    private struct DayGroup: Identifiable {
+        let date: Date
+        let items: [Transaction]
+        let expense: Int64
+        let income: Int64
+        var id: Date { date }
+    }
+
+    private var dayGroups: [DayGroup] {
+        let grouped = Dictionary(grouping: monthTx) { Calendar.current.startOfDay(for: $0.date) }
+        return grouped.keys.sorted(by: >).map { day in
+            let items = (grouped[day] ?? []).sorted { $0.date > $1.date }
+            let totals = LedgerService.totals(in: items)
+            return DayGroup(date: day, items: items, expense: totals.expense, income: totals.income)
+        }
+    }
+
+    // MARK: - 视图
+
+    private var monthSection: some View {
+        Section {
+            PeriodNavHeader(
+                title: DateHelpers.title(of: .month, for: monthAnchor),
+                onPrev: { monthAnchor = DateHelpers.shift(monthAnchor, by: -1, of: .month) },
+                onNext: { monthAnchor = DateHelpers.shift(monthAnchor, by: 1, of: .month) }
+            )
+            .padding(.vertical, 2)
+            TotalsBar(expenseCents: monthTotals.expense, incomeCents: monthTotals.income)
+        }
+    }
+
+    private var accountSection: some View {
+        Section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    accountCard(
+                        title: "净资产",
+                        amount: LedgerService.netWorthCents(accounts: accounts, transactions: transactions),
+                        icon: "chart.bar.doc.horizontal",
+                        colorHex: "FF8A3D"
+                    )
+                    ForEach(accounts.filter { !$0.isArchived }) { account in
+                        accountCard(
+                            title: account.name,
+                            amount: LedgerService.balanceCents(of: account, transactions: transactions),
+                            icon: account.icon,
+                            colorHex: account.colorHex
+                        )
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+        }
+    }
+
+    private func accountCard(title: String, amount: Int64, icon: String, colorHex: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(Color(hex: colorHex))
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Text(Money.string(fromCents: amount))
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(amount < 0 ? Theme.alert : .primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(10)
+        .frame(width: 108, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private var transactionSections: some View {
+        if dayGroups.isEmpty {
+            Section {
+                EmptyStateView(icon: "tray",
+                               title: "本月还没有账目",
+                               hint: "点击底部「＋」记下第一笔吧")
+            }
+        } else {
+            ForEach(dayGroups) { group in
+                Section {
+                    ForEach(group.items) { tx in
+                        Button {
+                            editing = tx
+                        } label: {
+                            TransactionRowView(tx: tx)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    HStack {
+                        Text(dayTitle(group.date))
+                        Spacer()
+                        Text(dayTotalsText(expense: group.expense, income: group.income))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func dayTitle(_ date: Date) -> String {
+        let cal = Calendar.current
+        let day = cal.component(.day, from: date)
+        let weekdayIndex = (cal.component(.weekday, from: date) + 5) % 7
+        let weekday = DateHelpers.weekdayTitles[weekdayIndex]
+        return "\(cal.component(.month, from: date))月\(day)日 周\(weekday)"
+    }
+
+    private func dayTotalsText(expense: Int64, income: Int64) -> String {
+        var parts: [String] = []
+        if expense > 0 { parts.append("支 \(Money.string(fromCents: expense))") }
+        if income > 0 { parts.append("收 \(Money.string(fromCents: income))") }
+        return parts.joined(separator: "  ")
+    }
+}

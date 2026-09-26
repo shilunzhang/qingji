@@ -1,0 +1,75 @@
+name: QingJi
+options:
+  bundleIdPrefix: com.qingji
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  xcodeVersion: "16.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"          # Swift 5 语言模式，编译器为 Xcode 16 自带
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+
+targets:
+  QingJi:
+    type: application
+    platform: iOS
+    sources:
+      - path: QingJi
+        excludes:
+          - "*.entitlements"
+          - "Info.plist"
+    entitlements:
+      path: QingJi/QingJi.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.qingji.app
+        com.apple.developer.icloud-services:
+          - CloudKit
+    info:
+      path: QingJi/Info.plist
+      properties:
+        CFBundleDisplayName: 轻记
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleLocalizations:
+          - zh-Hans
+        NSCameraUsageDescription: 用于拍摄消费凭证照片，仅保存在你的账目中
+        NSFaceIDUsageDescription: 用于解锁「轻记」保护你的账目隐私
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qingji.app
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: YES
+
+  QingJiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: QingJiTests
+    dependencies:
+      - target: QingJi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qingji.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  QingJi:
+    build:
+      targets:
+        QingJi: all
+        QingJiTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - QingJiTests
