@@ -7,12 +7,12 @@ enum Money {
 
     /// 分 -> Decimal 元（用于图表数值等）
     static func yuan(fromCents cents: Int64) -> Decimal {
-        Decimal(cents) / 100
+        Decimal(cents) / Decimal(100)
     }
 
     /// 元（用户输入的 Decimal）-> 分，四舍五入到分
     static func cents(fromYuan value: Decimal) -> Int64 {
-        let scaled = (value * 100).rounded(.toNearestOrEven)
+        let scaled = (value * Decimal(100)).rounded(.toNearestOrEven)
         return Int64(NSDecimalNumber(decimal: scaled).int64Value)
     }
 

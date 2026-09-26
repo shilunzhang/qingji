@@ -135,7 +135,7 @@ struct CalendarView: View {
             VStack(spacing: 2) {
                 Text("\(Calendar.current.component(.day, from: day))")
                     .font(.subheadline.weight(isToday || isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? .white : .primary)
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
                     .frame(width: 28, height: 28)
                     .background(
                         Circle().fill(isSelected ? Color.accentColor : Color.clear)

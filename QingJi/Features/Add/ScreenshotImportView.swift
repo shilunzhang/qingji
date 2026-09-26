@@ -97,7 +97,7 @@ struct ScreenshotImportView: View {
                         }
                     }
                 }
-                .foregroundStyle(entry.wrappedValue.account == nil ? .orange : .primary)
+                .foregroundStyle(entry.wrappedValue.account == nil ? Color.orange : Color.primary)
             }
             HStack {
                 Text("分类")

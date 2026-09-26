@@ -86,19 +86,20 @@ struct ImportView: View {
         }
     }
 
-    private func summarySection(_ result: BillParseResult) -> some View {
+    private func summarySection(_ parseResult: BillParseResult) -> some View {
         let keys = dedupKeys
-        let duplicates = result.rows.filter { isDuplicate($0, keys: keys) }.count
-        let expense = result.rows.filter { $0.kind == .expense }.reduce(Int64(0)) { $0 + $1.amountCents }
-        let income = result.rows.filter { $0.kind == .income }.reduce(Int64(0)) { $0 + $1.amountCents }
+        let duplicates = parseResult.rows.filter { isDuplicate($0, keys: keys) }.count
+        let expense = parseResult.rows.filter { $0.kind == .expense }.reduce(Int64(0)) { $0 + $1.amountCents }
+        let income = parseResult.rows.filter { $0.kind == .income }.reduce(Int64(0)) { $0 + $1.amountCents }
+        let importable = parseResult.rows.count - duplicates
         return Section {
-            LabeledContent("来源", value: result.source.rawValue)
-            LabeledContent("可导入", value: "\(result.rows.count - duplicates) 笔")
+            LabeledContent("来源", value: parseResult.source.rawValue)
+            LabeledContent("可导入", value: "\(importable) 笔")
             LabeledContent("重复跳过", value: "\(duplicates) 笔")
-                .foregroundStyle(duplicates > 0 ? .orange : .primary)
+                .foregroundStyle(duplicates > 0 ? Color.orange : Color.primary)
             LabeledContent("支出合计", value: Money.string(fromCents: expense))
             LabeledContent("收入合计", value: Money.string(fromCents: income))
-            LabeledContent("自动剔除", value: "\(result.skippedLines) 行")
+            LabeledContent("自动剔除", value: "\(parseResult.skippedLines) 行")
                 .foregroundStyle(.secondary)
         }
     }
@@ -134,33 +135,14 @@ struct ImportView: View {
         }
     }
 
-    private func previewSection(_ result: BillParseResult) -> some View {
+    private func previewSection(_ parseResult: BillParseResult) -> some View {
         let keys = dedupKeys
+        let preview = Array(parseResult.rows.prefix(50))
         return Section {
-            ForEach(Array(result.rows.prefix(50).enumerated()), id: \.offset) { _, row in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.counterparty.isEmpty ? row.product : row.counterparty)
-                            .font(.subheadline)
-                            .lineLimit(1)
-                        Text(dateText(row.date))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if isDuplicate(row, keys: keys) {
-                        Text("重复")
-                            .font(.caption2)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Color.orange.opacity(0.15))
-                            .clipShape(Capsule())
-                            .foregroundStyle(.orange)
-                    }
-                    AmountText(row.amountCents, kind: row.kind, font: .subheadline.weight(.medium))
-                }
+            ForEach(preview.indices, id: \.self) { index in
+                billRow(preview[index], duplicate: isDuplicate(preview[index], keys: keys))
             }
-            if result.rows.count > 50 {
+            if parseResult.rows.count > 50 {
                 Text("仅预览前 50 条，导入时包含全部")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -168,6 +150,34 @@ struct ImportView: View {
         } header: {
             Text("预览")
         }
+    }
+
+    private func billRow(_ row: ParsedBillRow, duplicate: Bool) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rowText(row))
+                    .font(.subheadline)
+                    .lineLimit(1)
+                Text(dateText(row.date))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if duplicate {
+                Text("重复")
+                    .font(.caption2)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.orange.opacity(0.15))
+                    .clipShape(Capsule())
+                    .foregroundStyle(Color.orange)
+            }
+            AmountText(row.amountCents, kind: row.kind, font: .subheadline.weight(.medium))
+        }
+    }
+
+    private func rowText(_ row: ParsedBillRow) -> String {
+        row.counterparty.isEmpty ? row.product : row.counterparty
     }
 
     private func importSection(_ result: BillParseResult) -> some View {
