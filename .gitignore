@@ -14,3 +14,6 @@ build/
 # SwiftPM
 .build/
 Package.resolved
+
+# 本地产物
+dist/
