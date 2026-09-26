@@ -56,6 +56,20 @@ enum OCRService {
             DispatchQueue.main.async { completion(result) }
         }
     }
+
+    /// async 版本（App Intent / 相册扫描使用）
+    static func recognizeText(in image: UIImage) async -> String {
+        await withCheckedContinuation { continuation in
+            recognizeText(in: image) { result in
+                switch result {
+                case .success(let text):
+                    continuation.resume(returning: text)
+                case .failure:
+                    continuation.resume(returning: "")
+                }
+            }
+        }
+    }
 }
 
 /// 支付文本解析（文档 F-09）：OCR 结果 -> 金额/时间/收款方

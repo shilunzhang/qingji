@@ -22,6 +22,13 @@ struct SettingsView: View {
         )
     }
 
+    private var autoSaveBinding: Binding<Bool> {
+        Binding(
+            get: { CaptureSettings.autoSave },
+            set: { CaptureSettings.autoSave = $0 }
+        )
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -50,6 +57,8 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("静默自动入账", isOn: autoSaveBinding)
+                    NavigationLink("快捷指令配置指引") { SetupGuideView() }
                     NavigationLink("相册扫描记账") { AlbumScanView() }
                     NavigationLink("自动入账记录") { AutoPostLogView() }
                     Picker("重复账目处理", selection: sensitivityBinding) {
@@ -60,7 +69,7 @@ struct SettingsView: View {
                 } header: {
                     Text("自动记账")
                 } footer: {
-                    Text("提醒确认：手动记账发现疑似重复时弹窗确认（自动入账直接跳过）；阻止：疑似重复直接拒绝保存")
+                    Text("开启静默自动入账后，识别到支付将直接入账（仍受防重保护）；默认为确认式，识别到支付弹通知，点「入账」确认")
                 }
 
                 Section("管理") {
