@@ -2,6 +2,9 @@ import XCTest
 import SwiftData
 @testable import QingJi
 
+/// 新 SDK 存在同名系统类型，用模块限定消除二义性
+private typealias Category = QingJi.Category
+
 /// 金额解析与格式化（文档 F-01 AC1 / §7.4）
 final class MoneyTests: XCTestCase {
 
