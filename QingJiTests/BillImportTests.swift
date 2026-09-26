@@ -88,18 +88,12 @@ final class BillParserTests: XCTestCase {
         XCTAssertEqual(cells[1], "plain")
     }
 
-    func testDedupKeys() {
-        let row = ParsedBillRow(externalID: "X1",
-                                date: date(2026, 9, 1, hour: 12, minute: 30),
-                                amountCents: 1990,
-                                kind: .expense,
-                                counterparty: "a", product: "b", note: "", payMethod: "零钱")
-        let key = BillDedup.fuzzyKey(of: row)
-        // 同一分钟内相同金额/方向视为重复
-        let sameMinute = date(2026, 9, 1, hour: 12, minute: 30).addingTimeInterval(30)
+    func testFuzzyKeyStable() {
+        let base = date(2026, 9, 1, hour: 12, minute: 30)
+        let key = BillDedup.fuzzyKey(kind: .expense, date: base, amountCents: 1990)
+        let sameMinute = base.addingTimeInterval(30)
         XCTAssertEqual(BillDedup.fuzzyKey(kind: .expense, date: sameMinute, amountCents: 1990), key)
-        // 不同金额不重复
-        XCTAssertNotEqual(BillDedup.fuzzyKey(kind: .expense, date: row.date, amountCents: 2000), key)
+        XCTAssertNotEqual(BillDedup.fuzzyKey(kind: .expense, date: base, amountCents: 2000), key)
     }
 }
 

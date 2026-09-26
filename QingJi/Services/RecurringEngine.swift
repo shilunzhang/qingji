@@ -108,7 +108,8 @@ enum RecurringEngine {
                                      account: rule.account,
                                      category: rule.category,
                                      note: rule.note,
-                                     recurringRuleID: rule.id)
+                                     recurringRuleID: rule.id,
+                                     source: .recurring)
                 context.insert(tx)
                 lastPosted = due
                 cursor = due

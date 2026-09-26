@@ -15,6 +15,22 @@ enum TxKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// 账目来源（文档 F-14：防重日志与自动入账撤销清单依赖）
+enum TxSource: String, Codable, CaseIterable, Identifiable {
+    case manual, ocr, album, bill, recurring
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .manual: return "手动"
+        case .ocr: return "截图识别"
+        case .album: return "相册扫描"
+        case .bill: return "账单导入"
+        case .recurring: return "周期记账"
+        }
+    }
+}
+
 /// 流水。金额以「分」存储，恒为正数，方向由 kind 决定。
 @Model
 final class Transaction {
@@ -33,6 +49,8 @@ final class Transaction {
     var recurringRuleID: UUID? = nil
     /// 外部流水号（账单导入的去重主键，文档 F-10）
     var externalID: String = ""
+    /// 账目来源（TxSource.rawValue，文档 F-14）
+    var source: String = TxSource.manual.rawValue
 
     @Relationship var account: Account? = nil
     @Relationship var toAccount: Account? = nil
@@ -41,6 +59,7 @@ final class Transaction {
     @Relationship(deleteRule: .cascade, inverse: \Attachment.transaction) var attachments: [Attachment]? = nil
 
     var type: TxKind { TxKind(rawValue: kind) ?? .expense }
+    var txSource: TxSource { TxSource(rawValue: source) ?? .manual }
     /// 元（Decimal），仅供展示/图表
     var yuan: Decimal { Money.yuan(fromCents: amountCents) }
 
@@ -52,7 +71,8 @@ final class Transaction {
          category: Category? = nil,
          note: String = "",
          recurringRuleID: UUID? = nil,
-         externalID: String = "") {
+         externalID: String = "",
+         source: TxSource = .manual) {
         self.kind = kind.rawValue
         self.amountCents = amountCents
         self.date = date
@@ -62,6 +82,7 @@ final class Transaction {
         self.note = note
         self.recurringRuleID = recurringRuleID
         self.externalID = externalID
+        self.source = source.rawValue
     }
 
     /// 行标题：分类名 / 转账 / 未分类

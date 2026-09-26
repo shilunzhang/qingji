@@ -59,12 +59,12 @@ struct ImportView: View {
 
     // MARK: - 数据
 
-    private var dedupKeys: BillDedup.Keys { BillDedup.keys(for: transactions) }
+    private var dedupContext: BillDedupContext {
+        BillDedup.makeContext(for: transactions)
+    }
 
-    private func isDuplicate(_ row: ParsedBillRow, keys: BillDedup.Keys) -> Bool {
-        if !row.externalID.isEmpty && keys.externalIDs.contains(row.externalID) { return true }
-        if keys.fuzzy.contains(BillDedup.fuzzyKey(of: row)) { return true }
-        return false
+    private func isDuplicate(_ row: ParsedBillRow, context dedup: BillDedupContext) -> Bool {
+        BillDedup.isDuplicate(row, context: dedup)
     }
 
     private func methods(in parseResult: BillParseResult) -> [String] {
@@ -132,8 +132,8 @@ struct ImportView: View {
     }
 
     private func importSection(_ parseResult: BillParseResult) -> some View {
-        let keys = dedupKeys
-        let importable = parseResult.rows.filter { !isDuplicate($0, keys: keys) }.count
+        let dedup = dedupContext
+        let importable = parseResult.rows.filter { !isDuplicate($0, context: dedup) }.count
         let title = importable > 0 ? "导入 \(importable) 笔" : "没有可导入的新账目"
         return Section {
             Button {
@@ -148,8 +148,8 @@ struct ImportView: View {
     }
 
     private func summarySection(_ parseResult: BillParseResult) -> some View {
-        let keys = dedupKeys
-        let duplicates = parseResult.rows.filter { isDuplicate($0, keys: keys) }.count
+        let dedup = dedupContext
+        let duplicates = parseResult.rows.filter { isDuplicate($0, context: dedup) }.count
         let expense = parseResult.rows.filter { $0.kind == .expense }.reduce(Int64(0)) { $0 + $1.amountCents }
         let income = parseResult.rows.filter { $0.kind == .income }.reduce(Int64(0)) { $0 + $1.amountCents }
         let importable = parseResult.rows.count - duplicates
@@ -166,11 +166,11 @@ struct ImportView: View {
     }
 
     private func previewSection(_ parseResult: BillParseResult) -> some View {
-        let keys = dedupKeys
+        let dedup = dedupContext
         let preview = Array(parseResult.rows.prefix(50))
         return Section {
             ForEach(preview.indices, id: \.self) { index in
-                billRow(preview[index], duplicate: isDuplicate(preview[index], keys: keys))
+                billRow(preview[index], duplicate: isDuplicate(preview[index], context: dedup))
             }
             if parseResult.rows.count > 50 {
                 Text("仅预览前 50 条，导入时包含全部")
@@ -249,15 +249,15 @@ struct ImportView: View {
     }
 
     private func performImport(_ parseResult: BillParseResult) {
-        let keys = dedupKeys
+        let dedup = dedupContext
         var batchSeen: Set<String> = []
         let fallback = activeAccounts.first
         var created = 0
 
         for row in parseResult.rows {
-            if isDuplicate(row, keys: keys) { continue }
-            let key = BillDedup.fuzzyKey(of: row)
-            guard batchSeen.insert(key).inserted else { continue } // 批内去重
+            if isDuplicate(row, context: dedup) { continue }
+            let key = BillDedup.fuzzyKey(kind: row.kind, date: row.date, amountCents: row.amountCents)
+            guard batchSeen.insert(key).inserted else { continue } // 批内分钟级去重
             guard let account = methodMap[row.payMethod] ?? fallback else { break }
 
             let summary = [row.counterparty, row.product].filter { !$0.isEmpty }.joined(separator: " · ")
@@ -268,7 +268,8 @@ struct ImportView: View {
                                        account: account,
                                        category: nil,
                                        note: note,
-                                       externalID: row.externalID))
+                                       externalID: row.externalID,
+                                       source: .bill))
             created += 1
         }
         try? context.save()

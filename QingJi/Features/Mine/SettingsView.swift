@@ -10,6 +10,17 @@ struct SettingsView: View {
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
 
     @State private var exportURL: URL?
+    @State private var sensitivity: DuplicateSensitivity = DuplicateGuard.sensitivity
+
+    private var sensitivityBinding: Binding<DuplicateSensitivity> {
+        Binding(
+            get: { sensitivity },
+            set: { newValue in
+                sensitivity = newValue
+                DuplicateGuard.sensitivity = newValue
+            }
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,6 +47,19 @@ struct SettingsView: View {
                 Section("记账") {
                     NavigationLink("预算管理") { BudgetView() }
                     NavigationLink("周期记账") { RecurringListView() }
+                }
+
+                Section {
+                    NavigationLink("自动入账记录") { AutoPostLogView() }
+                    Picker("重复账目处理", selection: sensitivityBinding) {
+                        ForEach(DuplicateSensitivity.allCases) { level in
+                            Text(level.title).tag(level)
+                        }
+                    }
+                } header: {
+                    Text("自动记账")
+                } footer: {
+                    Text("提醒确认：手动记账发现疑似重复时弹窗确认（自动入账直接跳过）；阻止：疑似重复直接拒绝保存")
                 }
 
                 Section("管理") {

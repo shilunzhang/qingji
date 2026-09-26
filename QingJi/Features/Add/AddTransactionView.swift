@@ -40,6 +40,9 @@ struct AddTransactionView: View {
     @State private var showAccountPicker = false
     @State private var showToAccountPicker = false
     @State private var didSetup = false
+    @State private var pendingDuplicate: DuplicateMatch?
+    @State private var showDuplicateConfirm = false
+    @State private var duplicateBlockMessage: String?
 
     private var isEditing: Bool {
         if case .edit = mode { return true }
@@ -110,6 +113,24 @@ struct AddTransactionView: View {
                 AccountPickerSheet(title: "转入账户", selected: toAccount, excluding: account) { picked in
                     toAccount = picked
                 }
+            }
+            .alert("疑似重复账目", isPresented: $showDuplicateConfirm) {
+                Button("仍要保存") {
+                    if let cents = amountCents, cents > 0, let account {
+                        commit(cents: cents, account: account)
+                    }
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text(pendingDuplicate.map { "已有一笔 \($0.summary)，确认仍要保存这笔吗？" } ?? "")
+            }
+            .alert("无法保存", isPresented: Binding(
+                get: { duplicateBlockMessage != nil },
+                set: { if !$0 { duplicateBlockMessage = nil } }
+            )) {
+                Button("好的", role: .cancel) {}
+            } message: {
+                Text(duplicateBlockMessage ?? "")
             }
             .onChange(of: photoItems.count) { _, _ in
                 if !photoItems.isEmpty {
@@ -471,11 +492,32 @@ struct AddTransactionView: View {
         }
     }
 
+    /// 保存：先过 F-14 防重闸门（编辑时排除自身），再落库
     private func save() {
         guard let cents = amountCents, cents > 0, let account else { return }
+        var excludeID: UUID?
+        if case .edit(let editing) = mode { excludeID = editing.id }
 
+        let match = DuplicateGuard.findDuplicate(of: kind,
+                                                 amountCents: cents,
+                                                 date: date,
+                                                 in: history,
+                                                 excludeID: excludeID)
+        switch DuplicateGuard.manualDecision(for: match) {
+        case .allow:
+            commit(cents: cents, account: account)
+        case .confirm(let duplicated):
+            pendingDuplicate = duplicated
+            showDuplicateConfirm = true
+        case .block(let duplicated):
+            duplicateBlockMessage = "已存在 \($0.summary)。当前防重策略为「阻止」，如确需保存请在「我的 → 自动记账」中调整灵敏度。"
+        }
+    }
+
+    private func commit(cents: Int64, account: Account) {
         let effectiveToAccount = kind == .transfer ? toAccount : nil
         let effectiveCategory = kind == .transfer ? nil : selectedCategory
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
 
         switch mode {
         case .create:
@@ -485,18 +527,18 @@ struct AddTransactionView: View {
                                  account: account,
                                  toAccount: effectiveToAccount,
                                  category: effectiveCategory,
-                                 note: note.trimmingCharacters(in: .whitespacesAndNewlines))
+                                 note: trimmedNote)
             context.insert(tx)
             attachPhotos(to: tx)
         case .edit(let tx):
             tx.kind = kind.rawValue
             tx.amountCents = cents
             tx.date = date
-            tx.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+            tx.note = trimmedNote
             tx.account = account
             tx.toAccount = effectiveToAccount
             tx.category = effectiveCategory
-            tx.updatedAt = .now
+            tx.updatedAt = Date.now
             attachPhotos(to: tx)
         }
         try? context.save()

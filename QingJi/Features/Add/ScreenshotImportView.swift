@@ -136,7 +136,8 @@ struct ScreenshotImportView: View {
                                    date: entry.date,
                                    account: account,
                                    category: entry.category,
-                                   note: entry.counterparty))
+                                   note: entry.counterparty,
+                                   source: .ocr))
         try? context.save()
         savedCount += 1
         entries.removeAll { $0.id == entry.id }

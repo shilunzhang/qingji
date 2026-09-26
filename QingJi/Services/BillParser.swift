@@ -274,30 +274,63 @@ enum BillParser {
     }
 }
 
-/// 导入查重（文档 F-10）：交易单号精确 + 时间(分钟)/金额/方向 模糊
+/// 导入查重（文档 F-14 第 1/3 道防线）三层结构：
+/// ① 交易单号精确（同一账单文件重复导入的根治）
+/// ② 分钟精确「方向+金额+同一分钟」（保留 M2 首批行为，批内去重同款）
+/// ③ ±10min 窗口（仅匹配非 bill 来源的已有账目——与截图/手动流互斥，
+///    排除 bill↔bill 以免误杀同额近距离的真实账单行，如两笔连续地铁）
+struct BillDedupContext {
+    let externalIDs: Set<String>
+    let minuteKeys: Set<String>
+    let transactions: [Transaction]
+}
+
 enum BillDedup {
 
-    struct Keys {
-        let externalIDs: Set<String>
-        let fuzzy: Set<String>
-    }
-
-    static func keys(for transactions: [Transaction]) -> Keys {
+    static func makeContext(for transactions: [Transaction]) -> BillDedupContext {
         var externalIDs: Set<String> = []
-        var fuzzy: Set<String> = []
+        var minuteKeys: Set<String> = []
         for tx in transactions {
             if !tx.externalID.isEmpty { externalIDs.insert(tx.externalID) }
-            fuzzy.insert(fuzzyKey(kind: tx.type, date: tx.date, amountCents: tx.amountCents))
+            minuteKeys.insert(fuzzyKey(kind: tx.type, date: tx.date, amountCents: tx.amountCents))
         }
-        return Keys(externalIDs: externalIDs, fuzzy: fuzzy)
+        return BillDedupContext(externalIDs: externalIDs, minuteKeys: minuteKeys, transactions: transactions)
     }
 
+    static func isDuplicate(_ row: ParsedBillRow,
+                            context: BillDedupContext,
+                            windowMinutes: Int = DuplicateGuard.defaultWindowMinutes) -> Bool {
+        isDuplicate(kind: row.kind,
+                    amountCents: row.amountCents,
+                    date: row.date,
+                    externalID: row.externalID,
+                    context: context,
+                    windowMinutes: windowMinutes)
+    }
+
+    static func isDuplicate(kind: TxKind,
+                            amountCents: Int64,
+                            date: Date,
+                            externalID: String,
+                            context: BillDedupContext,
+                            windowMinutes: Int = DuplicateGuard.defaultWindowMinutes) -> Bool {
+        // ① 流水号精确
+        if !externalID.isEmpty && context.externalIDs.contains(externalID) { return true }
+        // ② 分钟精确
+        if context.minuteKeys.contains(fuzzyKey(kind: kind, date: date, amountCents: amountCents)) { return true }
+        // ③ 窗口匹配，排除 bill 来源
+        let match = DuplicateGuard.findDuplicate(of: kind,
+                                                 amountCents: amountCents,
+                                                 date: date,
+                                                 in: context.transactions,
+                                                 windowMinutes: windowMinutes,
+                                                 excludedSources: [.bill])
+        return match != nil
+    }
+
+    /// 分钟精确 key（批内去重与第②层共用）
     static func fuzzyKey(kind: TxKind, date: Date, amountCents: Int64) -> String {
         let minute = Int(date.timeIntervalSince1970 / 60)
         return "\(kind.rawValue)|\(minute)|\(amountCents)"
-    }
-
-    static func fuzzyKey(of row: ParsedBillRow) -> String {
-        fuzzyKey(kind: row.kind, date: row.date, amountCents: row.amountCents)
     }
 }
