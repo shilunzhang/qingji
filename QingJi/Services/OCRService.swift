@@ -88,6 +88,15 @@ enum PaymentTextParser {
         return result
     }
 
+    /// 支付成功页特征判定（文档 F-12/F-13）：含支付类关键词 + 能解析出金额才认定为支付页，
+    /// 避免把聊天/文章里的零散数字误判为消费
+    static func looksLikePaymentPage(_ text: String) -> Bool {
+        let keywords = ["支付成功", "付款成功", "收款成功", "交易成功", "到账", "付款金额",
+                        "支付金额", "实付", "已支付", "收款金额", "入账", "收银台"]
+        guard keywords.contains(where: { text.contains($0) }) else { return false }
+        return parse(text).amountCents != nil
+    }
+
     // MARK: - 金额
 
     private static func findAmount(in lines: [String]) -> Int64? {

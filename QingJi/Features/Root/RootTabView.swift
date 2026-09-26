@@ -14,6 +14,7 @@ struct RootTabView: View {
     @State private var selection: AppTab = .overview
     @State private var lastSelection: AppTab = .overview
     @State private var showAddSheet = false
+    @State private var showAlbumScan = false
 
     var body: some View {
         TabView(selection: $selection) {
@@ -48,6 +49,11 @@ struct RootTabView: View {
         .sheet(isPresented: $showAddSheet) {
             AddTransactionView(mode: .create(.expense, nil))
         }
+        .sheet(isPresented: $showAlbumScan) {
+            NavigationStack {
+                AlbumScanView()
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             appLock.handleScenePhase(phase)
         }
@@ -62,6 +68,16 @@ struct RootTabView: View {
             SeedService.ensureSeeded(context: context)
             let rules = (try? context.fetch(FetchDescriptor<RecurringRule>())) ?? []
             RecurringEngine.postDueRules(rules: rules, context: context)
+
+            // F-13：已授权时静默扫描相册，发现新支付页则弹批量确认（每天至多自动弹一次）
+            await AlbumScanModel.shared.scanIfAuthorized()
+            if !AlbumScanModel.shared.drafts.isEmpty {
+                let lastPrompt = UserDefaults.standard.object(forKey: "qingji.album.lastPrompt") as? Date
+                if lastPrompt == nil || Date.now.timeIntervalSince(lastPrompt!) > 86_400 {
+                    UserDefaults.standard.set(Date.now, forKey: "qingji.album.lastPrompt")
+                    showAlbumScan = true
+                }
+            }
         }
     }
 

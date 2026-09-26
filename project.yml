@@ -41,6 +41,7 @@ targets:
         CFBundleLocalizations:
           - zh-Hans
         NSCameraUsageDescription: 用于拍摄消费凭证照片，仅保存在你的账目中
+        NSPhotoLibraryUsageDescription: 读取你主动截取的屏幕快照以识别支付金额，全部在本机处理，不会上传
         NSFaceIDUsageDescription: 用于解锁「轻记」保护你的账目隐私
         ITSAppUsesNonExemptEncryption: false
     settings:

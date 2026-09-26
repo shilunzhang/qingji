@@ -50,6 +50,7 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink("相册扫描记账") { AlbumScanView() }
                     NavigationLink("自动入账记录") { AutoPostLogView() }
                     Picker("重复账目处理", selection: sensitivityBinding) {
                         ForEach(DuplicateSensitivity.allCases) { level in
