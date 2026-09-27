@@ -44,6 +44,7 @@ struct AddTransactionView: View {
     @State private var showCamera = false
     @State private var hintMessage: String?
     @State private var pendingDuplicate: DuplicateMatch?
+    @State private var pendingOriginalCents: Int64 = 0
     @State private var showDuplicateConfirm = false
     @State private var duplicateBlockMessage: String?
 
@@ -65,105 +66,106 @@ struct AddTransactionView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    kindPicker
-                    amountDisplay
-                    if kind == .transfer {
-                        transferSection
-                    } else {
-                        categorySection
-                        accountSection
-                    }
-                    metaSection
-                    photoSection
-                }
-                .padding(.vertical, 12)
-            }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 10) {
-                    clearButton
-                    NumberPad(onDigit: handleDigit, onDelete: handleDelete)
-                }
-                .padding(.top, 10)
-                .background(Color(uiColor: .systemGroupedBackground))
-            }
-            .navigationTitle(isEditing ? "编辑账目" : "记一笔")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("取消") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showCamera = true
-                    } label: {
-                        Image(systemName: "camera.viewfinder")
-                    }
-                    .accessibilityLabel("拍照识别")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("保存") { save() }
-                        .fontWeight(.semibold)
-                        .disabled(!canSave)
-                }
-            }
-            .sheet(isPresented: $showCategorySheet) {
-                CategoryPickerSheet(selected: selectedCategory, defaultKind: categoryKind) { picked in
-                    selectedCategory = picked
-                }
-            }
-            .sheet(isPresented: $showAccountPicker) {
-                AccountPickerSheet(title: "选择账户", selected: account) { picked in
-                    if toAccount?.id == picked.id { toAccount = nil }
-                    account = picked
-                }
-            }
-            .sheet(isPresented: $showToAccountPicker) {
-                AccountPickerSheet(title: "转入账户", selected: toAccount, excluding: account) { picked in
-                    toAccount = picked
-                }
-            }
-            .sheet(isPresented: $showCamera) {
-                CameraPicker { image in
-                    handleCapturedImage(image)
-                }
-                .ignoresSafeArea()
-            }
-            .alert("疑似重复账目", isPresented: $showDuplicateConfirm) {
-                Button("仍要保存") {
-                    if let cents = amountCents, cents > 0, let account {
-                        commit(cents: cents, account: account)
-                    }
-                }
-                Button("取消", role: .cancel) {}
-            } message: {
-                Text(pendingDuplicate.map { "已有一笔 \($0.summary)，确认仍要保存这笔吗？" } ?? "")
-            }
-            .alert("无法保存", isPresented: Binding(
-                get: { duplicateBlockMessage != nil },
-                set: { if !$0 { duplicateBlockMessage = nil } }
-            )) {
-                Button("好的", role: .cancel) {}
-            } message: {
-                Text(duplicateBlockMessage ?? "")
-            }
-            .alert("提示", isPresented: Binding(
-                get: { hintMessage != nil },
-                set: { if !$0 { hintMessage = nil } }
-            )) {
-                Button("好的", role: .cancel) {}
-            } message: {
-                Text(hintMessage ?? "")
-            }
-            .onChange(of: photoItems.count) { _, _ in
-                if !photoItems.isEmpty {
-                    importPhotos(photoItems)
-                }
-            }
-            .onAppear(perform: setup)
+            formContent
         }
+        .sheet(isPresented: $showCategorySheet) {
+            CategoryPickerSheet(selected: selectedCategory, defaultKind: categoryKind) { picked in
+                selectedCategory = picked
+            }
+        }
+        .sheet(isPresented: $showAccountPicker) {
+            AccountPickerSheet(title: "选择账户", selected: account) { picked in
+                if toAccount?.id == picked.id { toAccount = nil }
+                account = picked
+            }
+        }
+        .sheet(isPresented: $showToAccountPicker) {
+            AccountPickerSheet(title: "转入账户", selected: toAccount, excluding: account) { picked in
+                toAccount = picked
+            }
+        }
+        .sheet(isPresented: $showCamera) {
+            CameraPicker { image in
+                handleCapturedImage(image)
+            }
+            .ignoresSafeArea()
+        }
+        .duplicateAlerts
+        .onChange(of: photoItems.count) { _, _ in
+            if !photoItems.isEmpty {
+                importPhotos(photoItems)
+            }
+        }
+        .onAppear(perform: setup)
+    }
+
+    /// 表单主体（拆分子表达式，避免 ViewBuilder 类型检查超时）
+    private var formContent: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                kindPicker
+                amountDisplay
+                if kind == .transfer {
+                    transferSection
+                } else {
+                    categorySection
+                    accountSection
+                }
+                metaSection
+                photoSection
+            }
+            .padding(.vertical, 12)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 10) {
+                clearButton
+                NumberPad(onDigit: handleDigit, onDelete: handleDelete)
+            }
+            .padding(.top, 10)
+            .background(Color(uiColor: .systemGroupedBackground))
+        }
+        .navigationTitle(navigationTitleText)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarItems }
+    }
+
+    private var navigationTitleText: String {
+        isEditing ? "编辑账目" : "记一笔"
+    }
+
+    private var bottomAccessory: some View {
+        VStack(spacing: 10) {
+            clearButton
+            NumberPad(onDigit: handleDigit, onDelete: handleDelete)
+        }
+        .padding(.top, 10)
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button("取消") { dismiss() }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showCamera = true
+            } label: {
+                Image(systemName: "camera.viewfinder")
+            }
+            .accessibilityLabel("拍照识别")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button("保存") { save() }
+                .fontWeight(.semibold)
+                .disabled(!canSave)
+        }
+    }
+
+    /// 防重与提示弹窗组
+    private var duplicateAlerts: some View {
+        alertsGroup
     }
 
     // MARK: - 子视图
@@ -525,6 +527,36 @@ struct AddTransactionView: View {
         amountText.removeLast()
     }
 
+    private var duplicateAlerts: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .alert("疑似重复账目", isPresented: $showDuplicateConfirm) {
+            Button("仍要保存") {
+                if let cents = amountCents, cents > 0, let account {
+                    commit(cents: cents, account: account, originalCents: pendingOriginalCents)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text(pendingDuplicate.map { "已有一笔 \($0.summary)，确认仍要保存这笔吗？" } ?? "")
+        }
+        alert("无法保存", isPresented: Binding(
+            get: { duplicateBlockMessage != nil },
+            set: { if !$0 { duplicateBlockMessage = nil } }
+        )) {
+            Button("好的", role: .cancel) {}
+        } message: {
+            Text(duplicateBlockMessage ?? "")
+        }
+        alert("提示", isPresented: Binding(
+            get: { hintMessage != nil },
+            set: { if !$0 { hintMessage = nil } }
+        )) {
+            Button("好的", role: .cancel) {}
+        } message: {
+            Text(hintMessage ?? "")
+        }
+    }
     // MARK: - 装配与保存
 
     private func setup() {
@@ -596,6 +628,7 @@ struct AddTransactionView: View {
         case .allow:
             commit(cents: cents, account: account, originalCents: original)
         case .confirm(let duplicated):
+            pendingOriginalCents = original
             pendingDuplicate = duplicated
             showDuplicateConfirm = true
         case .block(let duplicated):
