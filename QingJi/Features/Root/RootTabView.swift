@@ -72,7 +72,7 @@ struct RootTabView: View {
             switch sheet {
             case .screenshotImport:
                 NavigationStack {
-                    ScreenshotImportView()
+                    QuickCaptureView(source: .album)
                 }
             case .albumScan:
                 NavigationStack {

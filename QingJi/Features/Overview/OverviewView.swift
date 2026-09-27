@@ -38,7 +38,7 @@ struct OverviewView: View {
             }
             .sheet(isPresented: $showScreenshot) {
                 NavigationStack {
-                    ScreenshotImportView()
+                    QuickCaptureView(source: .album)
                 }
             }
         }

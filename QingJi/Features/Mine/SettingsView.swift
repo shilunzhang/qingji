@@ -103,7 +103,7 @@ struct SettingsView: View {
 
                 Section("数据") {
                     NavigationLink("账单导入") { ImportView() }
-                    NavigationLink("截图记账") { ScreenshotImportView() }
+                    NavigationLink("截图入账") { QuickCaptureView(source: .album) }
                     if let url = exportURL {
                         ShareLink(item: url) {
                             Label("分享账单 CSV", systemImage: "square.and.arrow.up")

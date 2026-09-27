@@ -1,0 +1,61 @@
+import SwiftUI
+import PhotosUI
+import UIKit
+
+/// 系统相册选择器封装（文档 F-12/F-15）：多选图片，绝不涉及相机
+struct PhotoLibraryPicker: UIViewControllerRepresentable {
+
+    var maxCount: Int = 5
+    var onPicked: ([UIImage]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        config.selectionLimit = maxCount
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: PhotoLibraryPicker
+
+        init(_ parent: PhotoLibraryPicker) {
+            self.parent = parent
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            parent.dismiss()
+            guard !results.isEmpty else { return }
+            let providers = results.map(\.itemProvider)
+
+            Task { @MainActor in
+                var images: [UIImage] = []
+                for provider in providers {
+                    if let image = await Self.loadImage(from: provider) {
+                        images.append(image)
+                    }
+                }
+                if !images.isEmpty {
+                    parent.onPicked(images)
+                }
+            }
+        }
+
+        private func loadImage(from provider: NSItemProvider) async -> UIImage? {
+            await withCheckedContinuation { continuation in
+                provider.loadObject(ofClass: UIImage.self) { object, _ in
+                    continuation.resume(returning: object as? UIImage)
+                }
+            }
+        }
+    }
+}
