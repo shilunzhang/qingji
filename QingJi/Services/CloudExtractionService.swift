@@ -51,13 +51,19 @@ enum CloudExtractionService {
                model: "qwen-plus", note: "bailian.console.aliyun.com 申请 Key"),
     ]
 
-    /// 抽取；失败返回 nil（调用方回退下一层），成功返回交易行（可为空数组）
-    static func extract(text: String, config: CloudAIConfig, now: Date = .now) async -> [PaymentTextParser.ParsedPayment]? {
-        guard config.isConfigured else { return nil }
+    /// 调用结果（文档 F-12：可判断性——成功 / 具体失败原因）
+    enum Outcome {
+        case success([PaymentTextParser.ParsedPayment])
+        case failure(String)
+    }
+
+    /// 抽取；成功返回 .success(交易行)，失败返回 .failure(具体原因)
+    static func extract(text: String, config: CloudAIConfig, now: Date = .now) async -> Outcome {
+        guard config.isConfigured else { return .failure("未配置 API Key") }
 
         let endpoint = config.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             + "/chat/completions"
-        guard let url = URL(string: endpoint) else { return nil }
+        guard let url = URL(string: endpoint) else { return .failure("Base URL 无效：\(config.baseURL)") }
 
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = "POST"
@@ -77,19 +83,33 @@ enum CloudExtractionService {
         ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse else {
-            return nil
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            return .failure("网络错误：\(error.localizedDescription)（检查网络/代理）")
         }
-        guard http.statusCode == 200 else { return nil }
+        guard let http = response as? HTTPURLResponse else {
+            return .failure("响应异常")
+        }
+        guard http.statusCode == 200 else {
+            let bodyText = String(data: data, encoding: .utf8) ?? ""
+            let hint = http.statusCode == 401 ? "（API Key 无效或过期）"
+                : http.statusCode == 429 ? "（请求过于频繁/余额不足）" : ""
+            return .failure("HTTP \(http.statusCode)\(hint)：\(String(bodyText.prefix(200)))")
+        }
 
         guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = payload["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String else {
-            return nil
+            return .failure("响应格式无法解析")
         }
-        return parseJSONContent(content, now: now)
+        guard let rows = parseJSONContent(content, now: now) else {
+            return .failure("模型输出不是有效 JSON：\(String(content.prefix(200)))")
+        }
+        return .success(rows)
     }
 
     /// 解析模型返回的 JSON（容忍 ```json 围栏）

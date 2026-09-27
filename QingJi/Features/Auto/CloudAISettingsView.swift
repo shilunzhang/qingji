@@ -5,6 +5,8 @@ struct CloudAISettingsView: View {
     @State private var config = CloudAIStore.load()
     @State private var selectedPreset = "deepseek"
     @State private var showSavedHint = false
+    @State private var testing = false
+    @State private var testResult: String?
 
     var body: some View {
         Form {
@@ -49,6 +51,33 @@ struct CloudAISettingsView: View {
             }
 
             Section {
+                Button {
+                    Task { await testConnection() }
+                } label: {
+                    if testing {
+                        HStack {
+                            ProgressView()
+                            Text("测试中…")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Label("测试连接（用示例账单实测）", systemImage: "bolt.horizontal")
+                    }
+                }
+                .disabled(testing || !config.isConfigured)
+
+                if let testResult {
+                    Text(testResult)
+                        .font(.caption)
+                        .foregroundStyle(testResult.hasPrefix("✅") ? Theme.income : Theme.alert)
+                }
+            } header: {
+                Text("验证")
+            } footer: {
+                Text("用一段示例账单文本实测当前配置能否成功抽取，无需保存即可测试")
+            }
+
+            Section {
                 Button("保存配置") {
                     CloudAIStore.save(config)
                     showSavedHint = true
@@ -68,6 +97,21 @@ struct CloudAISettingsView: View {
         .navigationTitle("云端智能抽取")
         .onAppear {
             selectedPreset = CloudExtractionService.presets.first(where: { $0.baseURL == config.baseURL && $0.model == config.model })?.id ?? "custom"
+        }
+    }
+
+    private func testConnection() async {
+        testing = true
+        defer { testing = false }
+        let sample = "支付成功\n付款时间 2026-09-27 10:00:00\n付款金额 ¥45.60\n收款方：测试商户"
+        let outcome = await CloudExtractionService.extract(text: sample, config: config)
+        switch outcome {
+        case .success(let rows):
+            testResult = rows.isEmpty
+                ? "✅ API 调用成功，但模型返回 0 笔"
+                : "✅ 调用成功：识别 \(rows.count) 笔（示例文本）"
+        case .failure(let reason):
+            testResult = "❌ \(reason)"
         }
     }
 }

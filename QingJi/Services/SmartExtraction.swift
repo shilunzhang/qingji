@@ -28,11 +28,12 @@ enum SmartExtractionService {
         // 云端档：用户显式配置了 API Key 才启用
         let cloudConfig = CloudAIStore.load()
         if cloudConfig.isConfigured {
-            if let rows = await CloudExtractionService.extract(text: text, config: cloudConfig) {
-                DiagLog.append("云端抽取 \(rows.count) 笔（\(cloudConfig.model)）")
+            switch await CloudExtractionService.extract(text: text, config: cloudConfig) {
+            case .success(let rows):
+                DiagLog.append("云端抽取成功 \(rows.count) 笔（\(cloudConfig.model)）")
                 if !rows.isEmpty { return rows }
-            } else {
-                DiagLog.append("云端抽取失败，降级端侧/规则")
+            case .failure(let reason):
+                DiagLog.append("云端抽取失败：\(reason)")
             }
         }
 
