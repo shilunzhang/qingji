@@ -80,6 +80,8 @@ enum PaymentTextParser {
         var amountCents: Int64?
         var date: Date?
         var counterparty: String?
+        /// 多行解析时的收支方向；单笔解析为 nil（默认按支出处理）
+        var kind: TxKind? = nil
     }
 
     private static let labeledAmountPattern =
@@ -100,6 +102,101 @@ enum PaymentTextParser {
         result.date = findDate(in: text, calendar: calendar)
         result.counterparty = findCounterparty(in: lines)
         return result
+    }
+
+    /// 多笔解析（文档 F-13 增强）：账单列表页一行一笔，日期行为分组头；
+    /// 单笔详情页自动回落到 parse()。行格式：「瑞幸咖啡 -¥19.90」「工资到账 +¥3000.00」
+    static func parseAll(_ text: String, calendar: Calendar = .current) -> [ParsedPayment] {
+        let rows = extractSignedRows(text, calendar: calendar)
+        if rows.count >= 2 { return rows }
+
+        let single = parse(text, calendar: calendar)
+        if let cents = single.amountCents {
+            var result = single
+            if result.kind == nil { result.kind = .expense }
+            return [result]
+        }
+        return rows
+    }
+
+    /// 逐行提取带 +/- 方向的金额行
+    static func extractSignedRows(_ text: String, calendar: Calendar = .current) -> [ParsedPayment] {
+        let skipKeywords = ["合计", "余额", "退款", "手续费"]
+        let signedPattern = "([+-])\\s*[¥￥]?\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)"
+        guard let signedRegex = try? NSRegularExpression(pattern: signedPattern) else { return [] }
+
+        var results: [ParsedPayment] = []
+        var lastDate: Date?
+
+        for rawLine in text.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+
+            // 日期分组头（如「9月26日」「2026-09-26」）→ 记录并跳过
+            if let headerDate = dateHeader(line, calendar: calendar) {
+                lastDate = headerDate
+                continue
+            }
+            if skipKeywords.contains(where: line.contains) { continue }
+
+            let ns = line as NSString
+            let range = NSRange(location: 0, length: ns.length)
+            let matches = signedRegex.matches(in: line, range: range)
+            guard matches.count == 1 else { continue } // 一行只认一笔，避免误拆
+
+            let match = matches[0]
+            guard match.range(at: 1).location != NSNotFound,
+                  match.range(at: 2).location != NSNotFound else { continue }
+            let sign = ns.substring(with: match.range(at: 1))
+            let rawAmount = ns.substring(with: match.range(at: 2))
+            let cleaned = rawAmount.filter { $0.isNumber || $0 == "." }
+            guard let cents = Money.cents(fromString: cleaned), cents > 0 else { continue }
+
+            var name = ns.replacingCharacters(in: match.range, with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            name = name.trimmingCharacters(in: CharacterSet(charactersIn: "+-·¥￥,:："))
+                .trimmingCharacters(in: .whitespaces)
+            if name.count < 2 { name = "账单交易" }
+
+            results.append(ParsedPayment(amountCents: cents,
+                                         date: lastDate,
+                                         counterparty: name,
+                                         kind: sign == "+" ? .income : .expense))
+        }
+        return results
+    }
+
+    /// 日期分组头：「9月26日」「2026年9月26日」「2026-09-26」
+    private static func dateHeader(_ line: String, calendar: Calendar) -> Date? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let ns = trimmed as NSString
+        let range = NSRange(location: 0, length: ns.length)
+
+        let cnPattern = "^(?:([0-9]{4})年)?([0-9]{1,2})月([0-9]{1,2})日?$"
+        if let regex = try? NSRegularExpression(pattern: cnPattern),
+           let match = regex.firstMatch(in: trimmed, range: range) {
+            var comps = DateComponents()
+            let yearRange = match.range(at: 1)
+            comps.year = yearRange.location != NSNotFound
+                ? Int(ns.substring(with: yearRange))
+                : calendar.component(.year, from: .now)
+            comps.month = Int(ns.substring(with: match.range(at: 2))) ?? 1
+            comps.day = Int(ns.substring(with: match.range(at: 3))) ?? 1
+            comps.hour = 12
+            return calendar.date(from: comps)
+        }
+
+        let isoPattern = "^([0-9]{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2})$"
+        if let regex = try? NSRegularExpression(pattern: isoPattern),
+           let match = regex.firstMatch(in: trimmed, range: range) {
+            var comps = DateComponents()
+            comps.year = Int(ns.substring(with: match.range(at: 1)))
+            comps.month = Int(ns.substring(with: match.range(at: 2)))
+            comps.day = Int(ns.substring(with: match.range(at: 3)))
+            comps.hour = 12
+            return calendar.date(from: comps)
+        }
+        return nil
     }
 
     /// 支付成功页特征判定（文档 F-12/F-13）：含支付类关键词 + 能解析出金额才认定为支付页，

@@ -63,7 +63,7 @@ enum PhotoScanService {
         let options = PHImageRequestOptions()
         options.isSynchronous = true
         options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = false
+        options.isNetworkAccessAllowed = true // iCloud 优化的照片允许联网取回
         var image: UIImage?
         PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
             guard let data else { return }

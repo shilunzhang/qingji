@@ -74,4 +74,61 @@ final class AlbumScanTests: XCTestCase {
         AlbumScanStore.setLastScanDate(nil, defaults: suite)
         XCTAssertNil(AlbumScanStore.lastScanDate(defaults: suite))
     }
+
+    // MARK: - 多笔解析（账单列表页一行一笔）
+
+    func testParseAllBillList() {
+        let text = """
+        微信记账本
+        9月26日
+        瑞幸咖啡 -¥19.90
+        美团外卖 -¥45.60
+        9月25日
+        工资到账 +¥3000.00
+        """
+        let rows = PaymentTextParser.parseAll(text)
+        XCTAssertEqual(rows.count, 3)
+
+        XCTAssertEqual(rows[0].amountCents, 1990)
+        XCTAssertEqual(rows[0].kind, .expense)
+        XCTAssertEqual(rows[0].counterparty, "瑞幸咖啡")
+
+        XCTAssertEqual(rows[1].amountCents, 4560)
+        XCTAssertEqual(rows[1].counterparty, "美团外卖")
+
+        XCTAssertEqual(rows[2].kind, .income)
+        XCTAssertEqual(rows[2].amountCents, 300000)
+        XCTAssertEqual(rows[2].counterparty, "工资到账")
+
+        // 日期分组头生效：前两笔 9/26，第三笔 9/25
+        let cal = Calendar.current
+        XCTAssertEqual(cal.component(.day, from: rows[0].date ?? .distantFuture), 26)
+        XCTAssertEqual(cal.component(.day, from: rows[2].date ?? .distantFuture), 25)
+    }
+
+    func testParseAllSingleDetailFallsBack() {
+        let detail = """
+        支付成功
+        付款金额 ¥45.60
+        收款方：星巴克
+        """
+        let rows = PaymentTextParser.parseAll(detail)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].amountCents, 4560)
+    }
+
+    func testParseAllNonPaymentEmpty() {
+        XCTAssertTrue(PaymentTextParser.parseAll("随便聊聊天，今天天气不错").isEmpty)
+    }
+
+    func testExtractSignedRowsSkipsSummaryLines() {
+        let text = """
+        合计 -¥65.50
+        余额 ¥100.00
+        瑞幸咖啡 -¥19.90
+        """
+        let rows = PaymentTextParser.extractSignedRows(text)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].counterparty, "瑞幸咖啡")
+    }
 }

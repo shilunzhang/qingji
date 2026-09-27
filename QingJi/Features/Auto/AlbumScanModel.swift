@@ -1,10 +1,12 @@
 import SwiftUI
 import SwiftData
 
-/// 相册扫描待确认草稿（F-13）
+/// 相册扫描待确认草稿（F-13）。一张截图可解析出多笔（id = assetID#序号）
 struct AlbumScanDraft: Identifiable {
-    /// 相册 asset localIdentifier
     let id: String
+    /// 来源截图的 asset localIdentifier（全部草稿处理完才标记已处理）
+    let assetID: String
+    var kind: TxKind
     var amountText: String
     var date: Date
     var counterparty: String
@@ -13,7 +15,7 @@ struct AlbumScanDraft: Identifiable {
     var warning: String
 }
 
-/// 扫描模型：增量扫描 → OCR → 支付页判定 → 草稿；入账时过 F-14 自动闸门
+/// 扫描模型：增量扫描 → OCR → 多笔解析 → 草稿；入账时逐条过 F-14 自动闸门
 @MainActor
 final class AlbumScanModel: ObservableObject {
 
@@ -38,36 +40,37 @@ final class AlbumScanModel: ObservableObject {
         let assets = PhotoScanService.fetchNewScreenshots(after: since, limit: 10)
 
         var newDrafts: [AlbumScanDraft] = []
+        var skippedNonPayment = 0
         let processed = AlbumScanStore.processedIDs()
 
         for item in assets {
             guard !processed.contains(item.assetID) else { continue }
 
             let parsed = await recognize(item.image)
-
-            // 非支付页（识别不出金额）→ 登记已处理，静默跳过（AC：零打扰）
-            guard let cents = parsed.amountCents else {
+            guard !parsed.isEmpty else {
+                // 非支付/账单页 → 登记已处理，静默跳过
                 AlbumScanStore.markProcessed(item.assetID)
+                skippedNonPayment += 1
                 continue
             }
 
-            // 同一支付页指纹已见过 → 静默跳过（F-14 第 2 道）
-            let fingerprint = ScreenshotFingerprintStore.fingerprint(amountCents: cents,
-                                                                     pageDate: parsed.date,
-                                                                     merchant: parsed.counterparty ?? "")
-            guard !ScreenshotFingerprintStore.contains(fingerprint) else {
-                AlbumScanStore.markProcessed(item.assetID)
-                continue
-            }
-            ScreenshotFingerprintStore.insert(fingerprint)
+            for (index, row) in parsed.enumerated() {
+                let fingerprint = ScreenshotFingerprintStore.fingerprint(amountCents: row.amountCents ?? 0,
+                                                                         pageDate: row.date ?? item.creationDate,
+                                                                         merchant: row.counterparty ?? "")
+                guard !ScreenshotFingerprintStore.contains(fingerprint) else { continue }
+                ScreenshotFingerprintStore.insert(fingerprint)
 
-            newDrafts.append(AlbumScanDraft(id: item.assetID,
-                                            amountText: Money.inputString(fromCents: cents),
-                                            date: parsed.date ?? item.creationDate,
-                                            counterparty: parsed.counterparty ?? "",
-                                            category: nil,
-                                            account: nil,
-                                            warning: ""))
+                newDrafts.append(AlbumScanDraft(id: "\(item.assetID)#\(index)",
+                                                assetID: item.assetID,
+                                                kind: row.kind ?? .expense,
+                                                amountText: Money.inputString(fromCents: row.amountCents ?? 0),
+                                                date: row.date ?? item.creationDate,
+                                                counterparty: row.counterparty ?? "",
+                                                category: nil,
+                                                account: nil,
+                                                warning: ""))
+            }
         }
 
         AlbumScanStore.setLastScanDate(.now)
@@ -75,7 +78,11 @@ final class AlbumScanModel: ObservableObject {
         let existingIDs = Set(drafts.map(\.id))
         drafts.insert(contentsOf: newDrafts.filter { !existingIDs.contains($0.id) }, at: 0)
 
-        lastScanText = newDrafts.isEmpty ? "没有发现新的支付截图" : "发现 \(newDrafts.count) 笔待确认"
+        if assets.isEmpty {
+            lastScanText = "没有读取到新的屏幕快照。若照片权限为「有限访问」，请在系统设置中改为允许所有照片"
+        } else {
+            lastScanText = "扫描 \(assets.count) 张快照：新增 \(newDrafts.count) 笔待确认，\(skippedNonPayment) 张非账单页已跳过"
+        }
     }
 
     /// 入账：过 F-14 自动决策闸门（疑似重复 → 记日志跳过）
@@ -84,13 +91,13 @@ final class AlbumScanModel: ObservableObject {
               let account = draft.account ?? fallbackAccount else { return }
 
         let history = (try? context.fetch(FetchDescriptor<Transaction>())) ?? []
-        let match = DuplicateGuard.findDuplicate(of: .expense,
+        let match = DuplicateGuard.findDuplicate(of: draft.kind,
                                                  amountCents: cents,
                                                  date: draft.date,
                                                  in: history)
         switch DuplicateGuard.autoDecision(for: match) {
         case .post:
-            let tx = Transaction(kind: .expense,
+            let tx = Transaction(kind: draft.kind,
                                  amountCents: cents,
                                  date: draft.date,
                                  account: account,
@@ -99,11 +106,11 @@ final class AlbumScanModel: ObservableObject {
                                  source: .album)
             context.insert(tx)
             try? context.save()
-            AutoPostStore.shared.recordPosted(txID: tx.id, kind: .expense,
+            AutoPostStore.shared.recordPosted(txID: tx.id, kind: draft.kind,
                                               amountCents: cents, date: draft.date,
                                               note: draft.counterparty)
         case .skip(let duplicated):
-            AutoPostStore.shared.recordSkipped(kind: .expense, amountCents: cents,
+            AutoPostStore.shared.recordSkipped(kind: draft.kind, amountCents: cents,
                                                date: draft.date,
                                                note: draft.counterparty.isEmpty
                                                    ? "疑似重复：\(duplicated.summary)"
@@ -117,24 +124,28 @@ final class AlbumScanModel: ObservableObject {
         finish(draft)
     }
 
+    /// 同一截图的多笔草稿全部处理完，才把截图标记为已处理
     private func finish(_ draft: AlbumScanDraft) {
-        AlbumScanStore.markProcessed(draft.id)
+        let assetID = draft.assetID
         drafts.removeAll { $0.id == draft.id }
+        if !drafts.contains(where: { $0.assetID == assetID }) {
+            AlbumScanStore.markProcessed(assetID)
+        }
     }
 
-    private func recognize(_ image: UIImage) async -> PaymentTextParser.ParsedPayment {
+    private func recognize(_ image: UIImage) async -> [PaymentTextParser.ParsedPayment] {
         let rawData = image.jpegData(compressionQuality: 0.9) ?? Data()
         guard let compressed = AddTransactionView.compress(imageData: rawData, maxDimension: 1600),
               let target = UIImage(data: compressed) else {
-            return PaymentTextParser.ParsedPayment()
+            return []
         }
         return await withCheckedContinuation { continuation in
             OCRService.recognizeText(in: target) { result in
                 switch result {
                 case .success(let text):
-                    continuation.resume(returning: PaymentTextParser.parse(text))
+                    continuation.resume(returning: PaymentTextParser.parseAll(text))
                 case .failure:
-                    continuation.resume(returning: PaymentTextParser.ParsedPayment())
+                    continuation.resume(returning: [])
                 }
             }
         }

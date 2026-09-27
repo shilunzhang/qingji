@@ -71,7 +71,14 @@ struct AlbumScanView: View {
     private var scanSection: some View {
         Section {
             Button {
-                Task { await model.scan() }
+                Task {
+                    if !authorized {
+                        authorized = await PhotoScanService.requestAccess()
+                    }
+                    if authorized {
+                        await model.scan()
+                    }
+                }
             } label: {
                 if model.isScanning {
                     HStack {
@@ -80,10 +87,10 @@ struct AlbumScanView: View {
                             .foregroundStyle(.secondary)
                     }
                 } else {
-                    Label("扫描相册新截图", systemImage: "arrow.clockwise")
+                    Label(authorized ? "扫描相册新截图" : "允许访问照片并扫描", systemImage: "arrow.clockwise")
                 }
             }
-            .disabled(!authorized || model.isScanning)
+            .disabled(model.isScanning)
 
             if let text = model.lastScanText {
                 Text(text)
@@ -91,7 +98,7 @@ struct AlbumScanView: View {
                     .foregroundStyle(.secondary)
             }
         } footer: {
-            Text("扫描最近 10 张屏幕快照；非支付页面会自动跳过并标记已处理，不会重复弹出")
+            Text("扫描最近 10 张屏幕快照，账单列表页会按行拆成多笔；非账单页自动跳过并标记已处理")
         }
     }
 
@@ -99,6 +106,11 @@ struct AlbumScanView: View {
 
     private func draftSection(_ draft: Binding<AlbumScanDraft>) -> some View {
         Section {
+            Picker("类型", selection: draft.kind) {
+                Text("支出").tag(TxKind.expense)
+                Text("收入").tag(TxKind.income)
+            }
+            .pickerStyle(.segmented)
             TextField("金额（元）", text: draft.amountText)
                 .keyboardType(.decimalPad)
                 .font(.title3.weight(.semibold))
