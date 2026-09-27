@@ -16,7 +16,7 @@ struct ScreenshotImportView: View {
     @State private var processing = false
     @State private var savedCount = 0
     @State private var pendingDuplicate: DuplicateMatch?
-    @State private var confirmDraftID: String?
+    @State private var confirmDraftID: DraftEntry.ID?
     @State private var duplicateBlockMessage: String?
 
     /// sheet(item:) 要求 Identifiable，UUID 本身不满足，用包装类型
