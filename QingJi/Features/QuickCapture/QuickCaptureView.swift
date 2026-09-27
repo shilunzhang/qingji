@@ -85,9 +85,12 @@ struct QuickCaptureView: View {
             }
             .ignoresSafeArea()
         case .camera:
-            CameraPicker { image in
-                Task { await handleImages([image]) }
-            }
+            CameraPicker(
+                onImage: { image in
+                    Task { await handleImages([image]) }
+                },
+                onCancel: { }
+            )
             .ignoresSafeArea()
         }
         if processing {

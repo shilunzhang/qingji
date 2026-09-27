@@ -79,9 +79,12 @@ struct RootTabView: View {
                     AlbumScanView()
                 }
             case .cameraCapture:
-                CameraPicker { image in
-                    handleCapturedForAdd(image)
-                }
+                CameraPicker(
+                    onImage: { image in
+                        handleCapturedForAdd(image)
+                    },
+                    onCancel: { }
+                )
                 .ignoresSafeArea()
             case .manualAdd(let kind, let prefill):
                 AddTransactionView(mode: .create(kind, prefill))
