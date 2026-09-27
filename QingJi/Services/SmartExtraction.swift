@@ -20,7 +20,7 @@ enum SmartExtractionService {
     }
 
     /// 图片 → 交易行（智能优先，规则兜底）
-    static func extractRows(from image: UIImage) async -> [ParsedPayment] {
+    static func extractRows(from image: UIImage) async -> [PaymentTextParser.ParsedPayment] {
         let text = await OCRService.recognizeText(in: image)
         guard !text.isEmpty else { return [] }
 
@@ -39,14 +39,14 @@ enum SmartExtractionService {
 
     #if canImport(FoundationModels)
     @available(iOS 26, *)
-    private static func extractWithModel(text: String, now: Date) async -> [ParsedPayment] {
+    private static func extractWithModel(text: String, now: Date) async -> [PaymentTextParser.ParsedPayment] {
         let clipped = String(text.prefix(2500))
         do {
             let session = LanguageModelSession(instructions: Self.instructions(now: now))
             let response = try await session.respond(to: clipped, generating: SmartTransactionList.self)
             return response.content.transactions.compactMap { item in
                 guard let cents = centsFrom(item.amount) else { return nil }
-                return ParsedPayment(amountCents: cents,
+                return PaymentTextParser.ParsedPayment(amountCents: cents,
                                      date: parseTime(item.time, fallback: now),
                                      counterparty: item.merchant.isEmpty ? "支付" : item.merchant,
                                      kind: item.direction.lowercased() == "income" ? .income : .expense,
