@@ -84,8 +84,6 @@ struct ScreenshotImportView: View {
             } footer: {
                 Text("从相册选截图 = 打开照片图库选择；拍照识别 = 打开相机现场拍摄。两个入口都只识别支付/账单页面")
             }
-                Text("支持支付宝/微信等支付成功页截图，自动识别金额、时间与收款方，识别后可修改再保存")
-            }
 
             ForEach($entries) { $entry in
                 entrySection($entry)
