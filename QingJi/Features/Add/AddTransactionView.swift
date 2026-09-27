@@ -527,36 +527,6 @@ struct AddTransactionView: View {
         amountText.removeLast()
     }
 
-    private var duplicateAlerts: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .alert("疑似重复账目", isPresented: $showDuplicateConfirm) {
-            Button("仍要保存") {
-                if let cents = amountCents, cents > 0, let account {
-                    commit(cents: cents, account: account, originalCents: pendingOriginalCents)
-                }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text(pendingDuplicate.map { "已有一笔 \($0.summary)，确认仍要保存这笔吗？" } ?? "")
-        }
-        alert("无法保存", isPresented: Binding(
-            get: { duplicateBlockMessage != nil },
-            set: { if !$0 { duplicateBlockMessage = nil } }
-        )) {
-            Button("好的", role: .cancel) {}
-        } message: {
-            Text(duplicateBlockMessage ?? "")
-        }
-        alert("提示", isPresented: Binding(
-            get: { hintMessage != nil },
-            set: { if !$0 { hintMessage = nil } }
-        )) {
-            Button("好的", role: .cancel) {}
-        } message: {
-            Text(hintMessage ?? "")
-        }
-    }
     // MARK: - 装配与保存
 
     private func setup() {
