@@ -90,7 +90,18 @@ struct AddTransactionView: View {
             }
             .ignoresSafeArea()
         }
-        .duplicateAlerts
+        .modifier(DuplicateAlertsModifier(
+            showDuplicateConfirm: $showDuplicateConfirm,
+            pendingDuplicate: $pendingDuplicate,
+            pendingOriginalCents: pendingOriginalCents,
+            blockMessage: $duplicateBlockMessage,
+            hintMessage: $hintMessage,
+            onConfirm: {
+                if let cents = amountCents, cents > 0, let account {
+                    commit(cents: cents, account: account, originalCents: pendingOriginalCents)
+                }
+            }
+        ))
         .onChange(of: photoItems.count) { _, _ in
             if !photoItems.isEmpty {
                 importPhotos(photoItems)
@@ -161,11 +172,6 @@ struct AddTransactionView: View {
                 .fontWeight(.semibold)
                 .disabled(!canSave)
         }
-    }
-
-    /// 防重与提示弹窗组
-    private var duplicateAlerts: some View {
-        alertsGroup
     }
 
     // MARK: - 子视图
@@ -646,5 +652,42 @@ struct AddTransactionView: View {
             context.insert(attachment)
         }
         newPhotoData = []
+    }
+}
+
+
+/// 防重与提示弹窗组（文档 F-14/F-16）
+private struct DuplicateAlertsModifier: ViewModifier {
+    @Binding var showDuplicateConfirm: Bool
+    @Binding var pendingDuplicate: DuplicateMatch?
+    let pendingOriginalCents: Int64
+    @Binding var blockMessage: String?
+    @Binding var hintMessage: String?
+    let onConfirm: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .alert("疑似重复账目", isPresented: $showDuplicateConfirm) {
+                Button("仍要保存") { onConfirm() }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text(pendingDuplicate.map { "已有一笔 \($0.summary)，确认仍要保存这笔吗？" } ?? "")
+            }
+            .alert("无法保存", isPresented: Binding(
+                get: { blockMessage != nil },
+                set: { if !$0 { blockMessage = nil } }
+            )) {
+                Button("好的", role: .cancel) {}
+            } message: {
+                Text(blockMessage ?? "")
+            }
+            .alert("提示", isPresented: Binding(
+                get: { hintMessage != nil },
+                set: { if !$0 { hintMessage = nil } }
+            )) {
+                Button("好的", role: .cancel) {}
+            } message: {
+                Text(hintMessage ?? "")
+            }
     }
 }
