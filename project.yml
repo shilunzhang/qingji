@@ -33,7 +33,7 @@ targets:
       path: QingJi/Info.plist
       properties:
         CFBundleDisplayName: 轻记
-        CFBundleShortVersionString: "0.1.0"
+        CFBundleShortVersionString: "1.4.0"
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
