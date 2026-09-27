@@ -52,7 +52,7 @@ enum CloudExtractionService {
     ]
 
     /// 抽取；失败返回 nil（调用方回退下一层），成功返回交易行（可为空数组）
-    static func extract(text: String, config: CloudAIConfig, now: Date = .now) async -> [ParsedPayment]? {
+    static func extract(text: String, config: CloudAIConfig, now: Date = .now) async -> [PaymentTextParser.ParsedPayment]? {
         guard config.isConfigured else { return nil }
 
         let endpoint = config.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -93,7 +93,7 @@ enum CloudExtractionService {
     }
 
     /// 解析模型返回的 JSON（容忍 ```json 围栏）
-    static func parseJSONContent(_ content: String, now: Date) -> [ParsedPayment]? {
+    static func parseJSONContent(_ content: String, now: Date) -> [PaymentTextParser.ParsedPayment]? {
         var jsonString = content.trimmingCharacters(in: .whitespacesAndNewlines)
         if jsonString.hasPrefix("```") {
             jsonString = jsonString
