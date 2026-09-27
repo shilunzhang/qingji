@@ -171,6 +171,11 @@ enum ScreenshotFingerprintStore {
         }
     }
 
+    /// 当前缓存条数（诊断页用）
+    static func count(defaults: UserDefaults = .standard) -> Int {
+        store(defaults: defaults)?.count ?? 0
+    }
+
     private static func store(defaults: UserDefaults) -> [String: Double]? {
         defaults.dictionary(forKey: key) as? [String: Double]
     }

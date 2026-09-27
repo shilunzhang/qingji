@@ -9,11 +9,15 @@ struct ScreenshotImportView: View {
 
     @Query(sort: \Category.sortOrder) private var categories: [Category]
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
+    @Query(sort: \Transaction.date, order: .reverse) private var history: [Transaction]
 
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var entries: [DraftEntry] = []
     @State private var processing = false
     @State private var savedCount = 0
+    @State private var pendingDuplicate: DuplicateMatch?
+    @State private var confirmDraftID: String?
+    @State private var duplicateBlockMessage: String?
 
     /// sheet(item:) 要求 Identifiable，UUID 本身不满足，用包装类型
     private struct CategoryTarget: Identifiable {
@@ -75,6 +79,30 @@ struct ScreenshotImportView: View {
                 }
             }
         }
+        .alert("疑似重复账目", isPresented: Binding(
+            get: { pendingDuplicate != nil },
+            set: { if !$0 { pendingDuplicate = nil } }
+        )) {
+            Button("仍要保存") {
+                if let id = confirmDraftID,
+                   let index = entries.firstIndex(where: { $0.id == id }),
+                   let cents = Money.cents(fromString: entries[index].amountText), cents > 0,
+                   let account = entries[index].account ?? accounts.first(where: { !$0.isArchived }) {
+                    commit(entries[index], cents: cents, account: account)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text(pendingDuplicate.map { "已有一笔 \($0.summary)，确认仍要保存这笔吗？" } ?? "")
+        }
+        .alert("无法保存", isPresented: Binding(
+            get: { duplicateBlockMessage != nil },
+            set: { if !$0 { duplicateBlockMessage = nil } }
+        )) {
+            Button("好的", role: .cancel) {}
+        } message: {
+            Text(duplicateBlockMessage ?? "")
+        }
     }
 
     // MARK: - 草稿行
@@ -128,17 +156,39 @@ struct ScreenshotImportView: View {
         return entry.account != nil || !accounts.filter { !$0.isArchived }.isEmpty
     }
 
+    /// 保存：先过 F-14 防重闸门，再落库（来源 .ocr）
     private func save(_ entry: DraftEntry) {
         guard let cents = Money.cents(fromString: entry.amountText), cents > 0 else { return }
         guard let account = entry.account ?? accounts.first(where: { !$0.isArchived }) else { return }
-        context.insert(Transaction(kind: .expense,
-                                   amountCents: cents,
-                                   date: entry.date,
-                                   account: account,
-                                   category: entry.category,
-                                   note: entry.counterparty,
-                                   source: .ocr))
+
+        let match = DuplicateGuard.findDuplicate(of: .expense,
+                                                 amountCents: cents,
+                                                 date: entry.date,
+                                                 in: history)
+        switch DuplicateGuard.manualDecision(for: match) {
+        case .allow:
+            commit(entry, cents: cents, account: account)
+        case .confirm(let duplicated):
+            pendingDuplicate = duplicated
+            confirmDraftID = entry.id
+        case .block(let duplicated):
+            duplicateBlockMessage = "已存在 \(duplicated.summary)。当前防重策略为「阻止」，如确需保存请在「我的 → 自动记账」中调整灵敏度。"
+        }
+    }
+
+    private func commit(_ entry: DraftEntry, cents: Int64, account: Account) {
+        let tx = Transaction(kind: .expense,
+                             amountCents: cents,
+                             date: entry.date,
+                             account: account,
+                             category: entry.category,
+                             note: entry.counterparty,
+                             source: .ocr)
+        context.insert(tx)
         try? context.save()
+        AutoPostStore.shared.recordPosted(txID: tx.id, kind: .expense,
+                                          amountCents: cents, date: entry.date,
+                                          note: entry.counterparty)
         savedCount += 1
         entries.removeAll { $0.id == entry.id }
     }

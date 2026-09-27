@@ -61,6 +61,11 @@ final class PendingCaptureStore {
         entries.first { $0.id == id }
     }
 
+    /// 当前待确认条数（诊断页用）
+    func count() -> Int {
+        entries.count
+    }
+
     func remove(_ id: UUID) {
         entries.removeAll { $0.id == id }
         persist()

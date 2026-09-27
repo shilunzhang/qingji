@@ -11,6 +11,10 @@ struct SettingsView: View {
 
     @State private var exportURL: URL?
     @State private var sensitivity: DuplicateSensitivity = DuplicateGuard.sensitivity
+    @State private var showAlbumScan = false
+    @State private var showSetupGuide = false
+    @State private var showAutoPostLog = false
+    @State private var showDiagnostics = false
 
     private var sensitivityBinding: Binding<DuplicateSensitivity> {
         Binding(
@@ -58,9 +62,14 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("静默自动入账", isOn: autoSaveBinding)
-                    NavigationLink("快捷指令配置指引") { SetupGuideView() }
-                    NavigationLink("相册扫描记账") { AlbumScanView() }
-                    NavigationLink("自动入账记录") { AutoPostLogView() }
+                    Button("快捷指令配置指引") { showSetupGuide = true }
+                        .foregroundStyle(.primary)
+                    Button("相册扫描记账") { showAlbumScan = true }
+                        .foregroundStyle(.primary)
+                    Button("自动入账记录") { showAutoPostLog = true }
+                        .foregroundStyle(.primary)
+                    Button("诊断信息") { showDiagnostics = true }
+                        .foregroundStyle(.primary)
                     Picker("重复账目处理", selection: sensitivityBinding) {
                         ForEach(DuplicateSensitivity.allCases) { level in
                             Text(level.title).tag(level)
@@ -117,6 +126,18 @@ struct SettingsView: View {
             }
             .navigationTitle("我的")
             .onAppear { appLock.refreshAvailability() }
+            .sheet(isPresented: $showSetupGuide) {
+                NavigationStack { SetupGuideView() }
+            }
+            .sheet(isPresented: $showAlbumScan) {
+                NavigationStack { AlbumScanView() }
+            }
+            .sheet(isPresented: $showAutoPostLog) {
+                NavigationStack { AutoPostLogView() }
+            }
+            .sheet(isPresented: $showDiagnostics) {
+                NavigationStack { DiagnosticsView() }
+            }
         }
     }
 

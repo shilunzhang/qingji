@@ -6,9 +6,9 @@ import UIKit
 struct AlbumScanView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
-    @ObservedObject private var model = AlbumScanModel.shared
+    @StateObject private var model = AlbumScanModel.shared
 
-    @State private var authorized = PhotoScanService.isAuthorized
+    @State private var authorized = false
     @State private var categoryTarget: CategoryTarget?
 
     /// sheet(item:) 要求 Identifiable 的包装类型
@@ -26,6 +26,9 @@ struct AlbumScanView: View {
             }
         }
         .navigationTitle("相册扫描记账")
+        .onAppear {
+            authorized = PhotoScanService.isAuthorized
+        }
         .task {
             if authorized, model.drafts.isEmpty {
                 await model.scanIfAuthorized()
