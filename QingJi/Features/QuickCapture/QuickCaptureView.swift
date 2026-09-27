@@ -195,10 +195,6 @@ struct QuickCaptureView: View {
         accounts.filter { !$0.isArchived }
     }
 
-    private var history: [Transaction] {
-        (try? context.fetch(FetchDescriptor<Transaction>())) ?? []
-    }
-
     /// 渠道 → 默认账户（文档 v1.4 渠道识别）
     private func resolveAccount(for entry: DraftEntry) -> Account? {
         let channelAccount = entry.channel?.accountKind.flatMap { kind in
