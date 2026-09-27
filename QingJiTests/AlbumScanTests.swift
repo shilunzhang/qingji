@@ -131,4 +131,50 @@ final class AlbumScanTests: XCTestCase {
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0].counterparty, "瑞幸咖啡")
     }
+
+    // MARK: - 时间标签优先级（多个时间时取付款/交易时间）
+
+    func testLabeledDatePriority() {
+        // 下单时间在前、交易时间在后 → 应取交易时间
+        let text = """
+        支付成功
+        下单时间 2026-09-26 09:00:00
+        交易时间 2026-09-26 12:30:05
+        付款金额 ¥45.60
+        """
+        let parsed = PaymentTextParser.parse(text)
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: parsed.date ?? .distantPast)
+        XCTAssertEqual(comps.hour, 12)
+        XCTAssertEqual(comps.minute, 30)
+    }
+
+    func testLabeledDateWithoutYear() {
+        // 无年份的带标签时间 → 按当前年补齐
+        let text = "付款时间：9月26日 08:05"
+        let parsed = PaymentTextParser.parse(text)
+        let comps = Calendar.current.dateComponents([.month, .day, .hour], from: parsed.date ?? .distantPast)
+        XCTAssertEqual(comps.month, 9)
+        XCTAssertEqual(comps.day, 26)
+        XCTAssertEqual(comps.hour, 8)
+    }
+
+    // MARK: - 智能抽取辅助
+
+    func testSmartCentsFrom() {
+        XCTAssertEqual(SmartExtractionService.centsFrom(45.6), 4560)
+        XCTAssertEqual(SmartExtractionService.centsFrom(3000), 300000)
+        XCTAssertNil(SmartExtractionService.centsFrom(-1))
+        XCTAssertNil(SmartExtractionService.centsFrom(0))
+    }
+
+    func testSmartParseTime() {
+        let fallback = Date(timeIntervalSince1970: 0)
+        let parsed = SmartExtractionService.parseTime("2026-09-26 12:30", fallback: fallback)
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: parsed)
+        XCTAssertEqual(comps.hour, 12)
+        XCTAssertEqual(comps.minute, 30)
+
+        // 无法解析 → 回退
+        XCTAssertEqual(SmartExtractionService.parseTime("not a date", fallback: fallback), fallback)
+    }
 }

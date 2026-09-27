@@ -116,7 +116,8 @@ struct AlbumScanView: View {
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
             DatePicker("时间", selection: draft.date)
-            TextField("收款方/备注", text: draft.counterparty)
+            TextField("收款方/商户", text: draft.counterparty)
+            TextField("备注", text: draft.note)
             HStack {
                 Text("账户")
                 Spacer()

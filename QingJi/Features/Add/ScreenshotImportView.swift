@@ -29,9 +29,11 @@ struct ScreenshotImportView: View {
 
     struct DraftEntry: Identifiable {
         let id = UUID()
+        var kind: TxKind
         var amountText: String
         var date: Date
         var counterparty: String
+        var note: String
         var category: Category?
         var account: Account?
         var warning: String
@@ -113,8 +115,14 @@ struct ScreenshotImportView: View {
                 .keyboardType(.decimalPad)
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
+            Picker("类型", selection: entry.kind) {
+                Text("支出").tag(TxKind.expense)
+                Text("收入").tag(TxKind.income)
+            }
+            .pickerStyle(.segmented)
             DatePicker("时间", selection: entry.date)
-            TextField("收款方/备注", text: entry.counterparty)
+            TextField("收款方/商户", text: entry.counterparty)
+            TextField("备注", text: entry.note)
             HStack {
                 Text("账户")
                 Spacer()
@@ -161,7 +169,7 @@ struct ScreenshotImportView: View {
         guard let cents = Money.cents(fromString: entry.amountText), cents > 0 else { return }
         guard let account = entry.account ?? accounts.first(where: { !$0.isArchived }) else { return }
 
-        let match = DuplicateGuard.findDuplicate(of: .expense,
+        let match = DuplicateGuard.findDuplicate(of: entry.kind,
                                                  amountCents: cents,
                                                  date: entry.date,
                                                  in: history)
@@ -177,18 +185,19 @@ struct ScreenshotImportView: View {
     }
 
     private func commit(_ entry: DraftEntry, cents: Int64, account: Account) {
-        let tx = Transaction(kind: .expense,
+        let noteText = entry.note.isEmpty ? entry.counterparty : entry.note
+        let tx = Transaction(kind: entry.kind,
                              amountCents: cents,
                              date: entry.date,
                              account: account,
                              category: entry.category,
-                             note: entry.counterparty,
+                             note: noteText,
                              source: .ocr)
         context.insert(tx)
         try? context.save()
-        AutoPostStore.shared.recordPosted(txID: tx.id, kind: .expense,
+        AutoPostStore.shared.recordPosted(txID: tx.id, kind: entry.kind,
                                           amountCents: cents, date: entry.date,
-                                          note: entry.counterparty)
+                                          note: noteText)
         savedCount += 1
         entries.removeAll { $0.id == entry.id }
     }
@@ -203,8 +212,9 @@ struct ScreenshotImportView: View {
             var drafts: [DraftEntry] = []
             for item in items {
                 guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-                let parsed = await recognize(data)
-                drafts.append(makeEntry(from: parsed))
+                for parsed in await recognize(data) {
+                    drafts.append(makeEntry(from: parsed))
+                }
             }
             await MainActor.run {
                 entries.append(contentsOf: drafts)
@@ -215,30 +225,26 @@ struct ScreenshotImportView: View {
 
     private func makeEntry(from parsed: PaymentTextParser.ParsedPayment) -> DraftEntry {
         var warning = ""
-        if parsed.amountCents == nil { warning = "未识别出金额，请手动补填" }
-        return DraftEntry(amountText: parsed.amountCents.map { Money.inputString(fromCents: $0) } ?? "",
+        if parsed.amountCents == nil || parsed.amountCents! <= 0 {
+            warning = "未识别出金额，请手动补填"
+        }
+        return DraftEntry(kind: parsed.kind ?? .expense,
+                          amountText: parsed.amountCents.map { Money.inputString(fromCents: $0) } ?? "",
                           date: parsed.date ?? Date(),
                           counterparty: parsed.counterparty ?? "",
+                          note: parsed.note ?? "",
                           category: nil,
                           account: accounts.first { !$0.isArchived },
                           warning: warning)
     }
 
-    private func recognize(_ data: Data) async -> PaymentTextParser.ParsedPayment {
+    /// 端侧大模型优先，规则解析兜底（文档 F-12 语义增强）
+    private func recognize(_ data: Data) async -> [PaymentTextParser.ParsedPayment] {
         // OCR 前缩放，提速且不影响识别率
         guard let compressed = AddTransactionView.compress(imageData: data, maxDimension: 1600),
               let image = UIImage(data: compressed) else {
-            return PaymentTextParser.ParsedPayment()
+            return []
         }
-        return await withCheckedContinuation { continuation in
-            OCRService.recognizeText(in: image) { result in
-                switch result {
-                case .success(let text):
-                    continuation.resume(returning: PaymentTextParser.parse(text))
-                case .failure:
-                    continuation.resume(returning: PaymentTextParser.ParsedPayment())
-                }
-            }
-        }
+        return await SmartExtractionService.extractRows(from: image)
     }
 }

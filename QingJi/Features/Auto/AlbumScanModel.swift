@@ -10,6 +10,8 @@ struct AlbumScanDraft: Identifiable {
     var amountText: String
     var date: Date
     var counterparty: String
+    /// 语义化备注（端侧模型生成，可编辑）
+    var note: String
     var category: Category?
     var account: Account?
     var warning: String
@@ -67,6 +69,7 @@ final class AlbumScanModel: ObservableObject {
                                                 amountText: Money.inputString(fromCents: row.amountCents ?? 0),
                                                 date: row.date ?? item.creationDate,
                                                 counterparty: row.counterparty ?? "",
+                                                note: row.note ?? "",
                                                 category: nil,
                                                 account: nil,
                                                 warning: ""))
@@ -95,6 +98,9 @@ final class AlbumScanModel: ObservableObject {
                                                  amountCents: cents,
                                                  date: draft.date,
                                                  in: history)
+        // 备注：优先语义化说明，回退商户名
+        let noteText = draft.note.isEmpty ? draft.counterparty : draft.note
+
         switch DuplicateGuard.autoDecision(for: match) {
         case .post:
             let tx = Transaction(kind: draft.kind,
@@ -102,19 +108,19 @@ final class AlbumScanModel: ObservableObject {
                                  date: draft.date,
                                  account: account,
                                  category: draft.category,
-                                 note: draft.counterparty,
+                                 note: noteText,
                                  source: .album)
             context.insert(tx)
             try? context.save()
             AutoPostStore.shared.recordPosted(txID: tx.id, kind: draft.kind,
                                               amountCents: cents, date: draft.date,
-                                              note: draft.counterparty)
+                                              note: noteText)
         case .skip(let duplicated):
             AutoPostStore.shared.recordSkipped(kind: draft.kind, amountCents: cents,
                                                date: draft.date,
                                                note: draft.counterparty.isEmpty
                                                    ? "疑似重复：\(duplicated.summary)"
-                                                   : draft.counterparty)
+                                                   : noteText)
         }
         finish(draft)
     }
@@ -134,20 +140,7 @@ final class AlbumScanModel: ObservableObject {
     }
 
     private func recognize(_ image: UIImage) async -> [PaymentTextParser.ParsedPayment] {
-        let rawData = image.jpegData(compressionQuality: 0.9) ?? Data()
-        guard let compressed = AddTransactionView.compress(imageData: rawData, maxDimension: 1600),
-              let target = UIImage(data: compressed) else {
-            return []
-        }
-        return await withCheckedContinuation { continuation in
-            OCRService.recognizeText(in: target) { result in
-                switch result {
-                case .success(let text):
-                    continuation.resume(returning: PaymentTextParser.parseAll(text))
-                case .failure:
-                    continuation.resume(returning: [])
-                }
-            }
-        }
+        // 端侧大模型优先，规则解析兜底（文档 F-12/F-13 语义增强）
+        await SmartExtractionService.extractRows(from: image)
     }
 }

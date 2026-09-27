@@ -82,6 +82,8 @@ enum PaymentTextParser {
         var counterparty: String?
         /// 多行解析时的收支方向；单笔解析为 nil（默认按支出处理）
         var kind: TxKind? = nil
+        /// 语义化备注（端侧大模型生成，规则解析为 nil）
+        var note: String? = nil
     }
 
     private static let labeledAmountPattern =
@@ -258,19 +260,39 @@ enum PaymentTextParser {
     // MARK: - 日期
 
     static func findDate(in text: String, calendar: Calendar = .current) -> Date? {
-        guard let regex = try? NSRegularExpression(pattern: datePattern) else { return nil }
+        // 优先带标签的日期（付款/交易时间等），避免拿到下单时间或订单号里的数字
+        let labeledPattern = #"(?:交易时间|付款时间|支付时间|到账时间|收款时间|成功时间|下单时间|日期)\s*[:：]?\s*((?:[0-9]{4}[-/年])?[0-9]{1,2}[-/月][0-9]{1,2}日?\s*[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)"#
+        if let date = dateFromCapture(labeledPattern, groupIndex: 1, text: text, calendar: calendar) {
+            return date
+        }
+        return dateFromCapture(datePattern, groupIndex: 0, text: text, calendar: calendar)
+    }
+
+    private static func dateFromCapture(_ pattern: String, groupIndex: Int, text: String, calendar: Calendar) -> Date? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let ns = text as NSString
-        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
+        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        let groupRange = groupIndex == 0 ? match.range : match.range(at: groupIndex)
+        guard groupRange.location != NSNotFound else { return nil }
+        return componentsDate(from: ns.substring(with: groupRange), calendar: calendar)
+    }
+
+    /// 从任意日期片段抽取年月日时分（缺年份时按当前年补齐）
+    private static func componentsDate(from string: String, calendar: Calendar) -> Date? {
+        guard let regex = try? NSRegularExpression(pattern: datePattern) else { return nil }
+        let ns = string as NSString
+        guard let match = regex.firstMatch(in: string, range: NSRange(location: 0, length: ns.length)),
               match.numberOfRanges >= 6 else { return nil }
 
         func int(_ index: Int) -> Int {
-            let range = match.range(at: index)
-            guard range.location != NSNotFound else { return 0 }
-            return Int(ns.substring(with: range)) ?? 0
+            let r = match.range(at: index)
+            guard r.location != NSNotFound else { return 0 }
+            return Int(ns.substring(with: r)) ?? 0
         }
 
         var comps = DateComponents()
         comps.year = int(1)
+        if comps.year == 0 { comps.year = calendar.component(.year, from: .now) }
         comps.month = int(2)
         comps.day = int(3)
         comps.hour = int(4)

@@ -20,7 +20,7 @@ struct IconBadge: View {
 struct AmountText: View {
     let cents: Int64
     let kind: TxKind
-    var font: Font = .body.weight(.medium)
+    var font: Font = .subheadline.weight(.semibold)
 
     init(_ cents: Int64, kind: TxKind, font: Font = .body.weight(.medium)) {
         self.cents = cents
@@ -114,19 +114,19 @@ struct TotalsBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            totalItem(label: "支出", cents: expenseCents, color: .primary)
-            totalItem(label: "收入", cents: incomeCents, color: Theme.income)
-            totalItem(label: "结余", cents: balanceCents, color: balanceCents >= 0 ? .primary : Theme.alert)
+            totalItem(label: "支出", cents: expenseCents, color: .primary, emphasized: true)
+            totalItem(label: "收入", cents: incomeCents, color: Theme.income, emphasized: false)
+            totalItem(label: "结余", cents: balanceCents, color: balanceCents >= 0 ? .primary : Theme.alert, emphasized: false)
         }
     }
 
-    private func totalItem(label: String, cents: Int64, color: Color) -> some View {
+    private func totalItem(label: String, cents: Int64, color: Color, emphasized: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(Money.string(fromCents: cents))
-                .font(.headline)
+                .font(emphasized ? .title3.weight(.bold) : .headline)
                 .foregroundStyle(color)
                 .monospacedDigit()
                 .lineLimit(1)
