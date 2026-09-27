@@ -3,10 +3,10 @@ import SwiftData
 import UIKit
 
 enum AppTab: Hashable {
-    case overview, stats, add, calendar, mine
+    case overview, stats, calendar, mine
 }
 
-/// 「＋」菜单目标（单一 sheet(item:) 驱动——同一视图挂多个 .sheet 只有最后一个生效）
+/// 「＋」浮标菜单目标（单一 sheet(item:) 驱动）
 enum AddSheet: Identifiable {
     case screenshotImport
     case albumScan
@@ -24,17 +24,13 @@ enum AddSheet: Identifiable {
     }
 }
 
-/// 根框架：5 位 Tab（中间「＋」弹出来源宫格）+ App 锁遮罩（文档 §6.1 / F-12）
+/// 根框架：4 位 Tab + 右下角浮动记账按钮（文档 §6.1 / v1.4）
 struct RootTabView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var appLock = AppLockManager()
     @State private var selection: AppTab = .overview
-    @State private var lastSelection: AppTab = .overview
-
-    @State private var showAddMenu = false
-    @State private var showAlbumScanPrompt = false
     @State private var activeSheet: AddSheet?
     @State private var captureHint: String?
 
@@ -48,10 +44,6 @@ struct RootTabView: View {
                 .tabItem { Label("图表", systemImage: "chart.pie") }
                 .tag(AppTab.stats)
 
-            Color.clear
-                .tabItem { Label("记账", systemImage: "plus.circle.fill") }
-                .tag(AppTab.add)
-
             CalendarView()
                 .tabItem { Label("日历", systemImage: "calendar") }
                 .tag(AppTab.calendar)
@@ -59,14 +51,6 @@ struct RootTabView: View {
             SettingsView()
                 .tabItem { Label("我的", systemImage: "person") }
                 .tag(AppTab.mine)
-        }
-        .onChange(of: selection) { _, newValue in
-            if newValue == .add {
-                selection = lastSelection
-                withAnimation(.spring(duration: 0.32)) { showAddMenu = true }
-            } else {
-                lastSelection = newValue
-            }
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -79,13 +63,9 @@ struct RootTabView: View {
                     AlbumScanView()
                 }
             case .cameraCapture:
-                CameraPicker(
-                    onImage: { image in
-                        handleCapturedForAdd(image)
-                    },
-                    onCancel: { }
-                )
-                .ignoresSafeArea()
+                NavigationStack {
+                    QuickCaptureView(source: .camera)
+                }
             case .manualAdd(let kind, let prefill):
                 AddTransactionView(mode: .create(kind, prefill))
             }
@@ -98,10 +78,12 @@ struct RootTabView: View {
         } message: {
             Text(captureHint ?? "")
         }
-        .overlay {
-            if showAddMenu {
-                addMenuOverlay
-            }
+        .overlay(alignment: .bottomTrailing) {
+            FloatingAddButton(onSelect: { sheet in
+                activeSheet = sheet
+            })
+            .padding(.trailing, 18)
+            .padding(.bottom, 90)
         }
         .overlay {
             if appLock.isLocked {
@@ -127,98 +109,6 @@ struct RootTabView: View {
                     activeSheet = .albumScan
                 }
             }
-        }
-    }
-
-    // MARK: - 记账来源宫格（2×2，简洁无冗余文字）
-
-    @ViewBuilder
-    private var addMenuOverlay: some View {
-        if showAddMenu {
-            ZStack {
-                Color.black.opacity(0.22)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(duration: 0.3)) { showAddMenu = false }
-                    }
-                VStack(spacing: 14) {
-                    HStack(spacing: 14) {
-                        menuTile("截图入账", "photo.on.rectangle", "4A90D9") {
-                            activeSheet = .screenshotImport
-                        }
-                        menuTile("拍照入账", "camera", "FF8A3D") {
-                            activeSheet = .cameraCapture
-                        }
-                    }
-                    HStack(spacing: 14) {
-                        menuTile("批量扫描", "doc.text.magnifyingglass", "8E7CF8") {
-                            activeSheet = .albumScan
-                        }
-                        menuTile("手动录入", "pencil.line", "4CAF50") {
-                            activeSheet = .manualAdd(kind: .expense, prefill: nil)
-                        }
-                    }
-                    Button {
-                        withAnimation(.spring(duration: 0.3)) { showAddMenu = false }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(.ultraThinMaterial, in: Circle())
-                    }
-                }
-                .padding(18)
-                .frame(maxWidth: 320)
-                .glassCard(cornerRadius: 28)
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
-            }
-        }
-    }
-
-    private func menuTile(_ title: String, _ icon: String, _ colorHex: String,
-                          action: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(.spring(duration: 0.3)) { showAddMenu = false }
-            action()
-        } label: {
-            Image(systemName: icon)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Color(hex: colorHex))
-                .frame(width: 48, height: 48)
-                .background(Color(hex: colorHex).opacity(0.14))
-                .clipShape(RoundedRectangle(cornerRadius: 13))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 13)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-    }
-
-    // MARK: - 拍照入账流（F-15）：拍摄 → 识别 → 预填手动表单
-
-    private func handleCapturedForAdd(_ image: UIImage) {
-        Task { @MainActor in
-            activeSheet = nil
-            let rows = await SmartExtractionService.extractRows(from: image)
-            guard let first = rows.first, let cents = first.amountCents, cents > 0 else {
-                captureHint = "未识别出支付信息，请改用「手动录入」"
-                return
-            }
-            if rows.count > 1 {
-                captureHint = "识别到 \(rows.count) 笔，已填入第一笔；其余请用「批量扫描」处理"
-            }
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            activeSheet = .manualAdd(
-                kind: first.kind ?? .expense,
-                prefill: AddTransactionView.Mode.Prefill(
-                    amountCents: cents,
-                    date: first.date,
-                    note: first.note ?? first.counterparty,
-                    categoryID: nil,
-                    kind: first.kind))
         }
     }
 
