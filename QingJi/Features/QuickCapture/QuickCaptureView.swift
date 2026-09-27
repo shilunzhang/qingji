@@ -245,7 +245,8 @@ struct QuickCaptureView: View {
                              account: account,
                              category: entry.category,
                              note: noteText,
-                             source: .ocr)
+                             source: .ocr,
+                             channel: entry.channel)
         context.insert(tx)
         try? context.save()
         AutoPostStore.shared.recordPosted(txID: tx.id, kind: entry.kind,
