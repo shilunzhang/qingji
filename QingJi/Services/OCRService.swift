@@ -260,9 +260,16 @@ enum PaymentTextParser {
     // MARK: - 日期
 
     static func findDate(in text: String, calendar: Calendar = .current) -> Date? {
-        // 优先带标签的日期（付款/交易时间等），避免拿到下单时间或订单号里的数字
-        let labeledPattern = #"(?:交易时间|付款时间|支付时间|到账时间|收款时间|成功时间|下单时间|日期)\s*[:：]?\s*((?:[0-9]{4}[-/年])?[0-9]{1,2}[-/月][0-9]{1,2}日?\s*[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)"#
-        if let date = dateFromCapture(labeledPattern, groupIndex: 1, text: text, calendar: calendar) {
+        let timePart = #"(?:[0-9]{4}[-/年])?[0-9]{1,2}[-/月][0-9]{1,2}日?\s*[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?"#
+        // 第一优先：付款/交易/到账等确定性时间标签（正则交替按文本位置取最早，
+        // 因此「下单时间」必须单独放第二轮，否则会抢在前面的下单时间）
+        let strongPattern = #"(?:交易时间|付款时间|支付时间|到账时间|收款时间|成功时间)\s*[:：]?\s*("# + timePart + #")"#
+        if let date = dateFromCapture(strongPattern, groupIndex: 1, text: text, calendar: calendar) {
+            return date
+        }
+        // 第二优先：下单时间/订单时间/日期
+        let weakPattern = #"(?:下单时间|订单时间|日期)\s*[:：]?\s*("# + timePart + #")"#
+        if let date = dateFromCapture(weakPattern, groupIndex: 1, text: text, calendar: calendar) {
             return date
         }
         return dateFromCapture(datePattern, groupIndex: 0, text: text, calendar: calendar)
@@ -277,12 +284,12 @@ enum PaymentTextParser {
         return componentsDate(from: ns.substring(with: groupRange), calendar: calendar)
     }
 
-    /// 从任意日期片段抽取年月日时分（缺年份时按当前年补齐）
+    /// 从任意日期片段抽取年月日时分（年份可选，缺省按当前年补齐）
     private static func componentsDate(from string: String, calendar: Calendar) -> Date? {
-        guard let regex = try? NSRegularExpression(pattern: datePattern) else { return nil }
+        let pattern = #"(?:([0-9]{4})[-/年])?([0-9]{1,2})[-/月]([0-9]{1,2})日?\s*([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let ns = string as NSString
-        guard let match = regex.firstMatch(in: string, range: NSRange(location: 0, length: ns.length)),
-              match.numberOfRanges >= 6 else { return nil }
+        guard let match = regex.firstMatch(in: string, range: NSRange(location: 0, length: ns.length)) else { return nil }
 
         func int(_ index: Int) -> Int {
             let r = match.range(at: index)
