@@ -9,6 +9,7 @@ struct DiagnosticsView: View {
 
     @State private var notificationStatus = "查询中…"
     @State private var photoStatus = "查询中…"
+    @State private var modelStatus = "查询中…"
     @State private var processedCount = 0
     @State private var fingerprintCount = 0
     @State private var pendingCount = 0
@@ -20,6 +21,7 @@ struct DiagnosticsView: View {
             Section("权限") {
                 row("通知权限", value: notificationStatus)
                 row("照片权限", value: photoStatus)
+                row("端侧大模型", value: modelStatus)
             }
 
             Section("处理状态") {
@@ -75,6 +77,8 @@ struct DiagnosticsView: View {
                 .restricted: "受限制", .authorized: "已允许", .limited: "有限访问",
             ]
             photoStatus = photoNames[PHPhotoLibrary.authorizationStatus(for: .readWrite)] ?? "未知"
+
+            modelStatus = SmartExtractionService.isAvailable ? "可用（语义抽取已启用）" : "不可用（走规则解析）"
 
             let pending = await MainActor.run { PendingCaptureStore.shared.count() }
             pendingCount = pending

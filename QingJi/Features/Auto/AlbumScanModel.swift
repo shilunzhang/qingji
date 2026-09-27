@@ -59,7 +59,7 @@ final class AlbumScanModel: ObservableObject {
             for (index, row) in parsed.enumerated() {
                 let fingerprint = ScreenshotFingerprintStore.fingerprint(amountCents: row.amountCents ?? 0,
                                                                          pageDate: row.date ?? item.creationDate,
-                                                                         merchant: row.counterparty ?? "")
+                                                                         merchant: "\(row.counterparty ?? "")#\(index)")
                 guard !ScreenshotFingerprintStore.contains(fingerprint) else { continue }
                 ScreenshotFingerprintStore.insert(fingerprint)
 
