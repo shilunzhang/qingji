@@ -188,42 +188,58 @@ struct AddTransactionView: View {
 
     private var amountDisplay: some View {
         VStack(spacing: 4) {
-            Text("金额")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("¥")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(displayAmount)
-                    .font(.system(size: 44, weight: .semibold))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.4)
-                Spacer()
-                Button {
-                    amountText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.tertiary)
-                }
-                .opacity(amountText.isEmpty ? 0 : 1)
-            }
-            HStack(spacing: 6) {
-                Text("原价")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("选填，有优惠时填写", text: $originalText)
-                    .keyboardType(.decimalPad)
-                    .font(.caption)
-                    .monospacedDigit()
-                    .multilineTextAlignment(.trailing)
-                savingsText
-            }
+            amountLabel
+            amountMainRow
+            originalPriceRow
         }
         .card()
         .padding(.horizontal, 16)
+    }
+
+    private var amountLabel: some View {
+        Text("金额")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var amountMainRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text("¥")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(displayAmount)
+                .font(.system(size: 44, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.4)
+            Spacer()
+            clearAmountButton
+        }
+    }
+
+    private var clearAmountButton: some View {
+        Button {
+            amountText = ""
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.tertiary)
+        }
+        .opacity(amountText.isEmpty ? 0.0 : 1.0)
+    }
+
+    private var originalPriceRow: some View {
+        HStack(spacing: 6) {
+            Text("原价")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("选填，有优惠时填写", text: $originalText)
+                .keyboardType(.decimalPad)
+                .font(.caption)
+                .monospacedDigit()
+                .multilineTextAlignment(.trailing)
+            savingsText
+        }
     }
 
     /// 实付小于原价时显示「省 ¥X」
