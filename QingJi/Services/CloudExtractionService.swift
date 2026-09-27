@@ -109,7 +109,7 @@ enum CloudExtractionService {
             guard let cents = SmartExtractionService.centsFrom(item.amount), cents > 0 else { return nil }
             let kind: TxKind = item.direction?.lowercased() == "income" ? .income : .expense
             let date = item.time.flatMap { SmartExtractionService.parseTime($0, fallback: now) }
-            return ParsedPayment(amountCents: cents,
+            return PaymentTextParser.ParsedPayment(amountCents: cents,
                                  date: date,
                                  counterparty: (item.merchant?.isEmpty == false) ? item.merchant! : "支付",
                                  kind: kind,
