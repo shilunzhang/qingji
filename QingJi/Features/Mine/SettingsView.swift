@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var showSetupGuide = false
     @State private var showAutoPostLog = false
     @State private var showDiagnostics = false
+    @State private var showCloudAI = false
 
     private var sensitivityBinding: Binding<DuplicateSensitivity> {
         Binding(
@@ -62,6 +63,8 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("静默自动入账", isOn: autoSaveBinding)
+                    Button("云端智能抽取（自带 Key）") { showCloudAI = true }
+                        .foregroundStyle(.primary)
                     Button("快捷指令配置指引") { showSetupGuide = true }
                         .foregroundStyle(.primary)
                     Button("相册扫描记账") { showAlbumScan = true }
@@ -78,7 +81,7 @@ struct SettingsView: View {
                 } header: {
                     Text("自动记账")
                 } footer: {
-                    Text("开启静默自动入账后，识别到支付将直接入账（仍受防重保护）；默认为确认式，识别到支付弹通知，点「入账」确认")
+                    Text("识别增强优先级：端侧大模型（Apple Intelligence）→ 云端（自带 Key，默认关闭）→ 规则。开启静默自动入账后，识别到支付将直接入账（仍受防重保护）")
                 }
 
                 Section("管理") {
@@ -137,6 +140,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showDiagnostics) {
                 NavigationStack { DiagnosticsView() }
+            }
+            .sheet(isPresented: $showCloudAI) {
+                NavigationStack { CloudAISettingsView() }
             }
         }
     }

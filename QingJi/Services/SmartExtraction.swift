@@ -20,9 +20,21 @@ enum SmartExtractionService {
     }
 
     /// 图片 → 交易行（智能优先，规则兜底）
+    /// 优先级：云端（用户已配置 Key）→ 端侧大模型（iOS 26 + Apple Intelligence）→ 规则解析
     static func extractRows(from image: UIImage) async -> [PaymentTextParser.ParsedPayment] {
         let text = await OCRService.recognizeText(in: image)
         guard !text.isEmpty else { return [] }
+
+        // 云端档：用户显式配置了 API Key 才启用
+        let cloudConfig = CloudAIStore.load()
+        if cloudConfig.isConfigured {
+            if let rows = await CloudExtractionService.extract(text: text, config: cloudConfig) {
+                DiagLog.append("云端抽取 \(rows.count) 笔（\(cloudConfig.model)）")
+                if !rows.isEmpty { return rows }
+            } else {
+                DiagLog.append("云端抽取失败，降级端侧/规则")
+            }
+        }
 
         #if canImport(FoundationModels)
         if #available(iOS 26, *), isAvailable {
@@ -42,7 +54,7 @@ enum SmartExtractionService {
     private static func extractWithModel(text: String, now: Date) async -> [PaymentTextParser.ParsedPayment] {
         let clipped = String(text.prefix(2500))
         do {
-            let session = LanguageModelSession(instructions: Self.instructions(now: now))
+            let session = LanguageModelSession(instructions: Self.extractionInstructions(now: now))
             let response = try await session.respond(to: clipped, generating: SmartTransactionList.self)
             return response.content.transactions.compactMap { item in
                 guard let cents = centsFrom(item.amount) else { return nil }
@@ -59,7 +71,8 @@ enum SmartExtractionService {
     }
     #endif
 
-    private static func instructions(now: Date) -> String {
+    /// 系统指令（端侧与云端共用）
+    static func extractionInstructions(now: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
         return """

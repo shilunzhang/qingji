@@ -177,4 +177,56 @@ final class AlbumScanTests: XCTestCase {
         // 无法解析 → 回退
         XCTAssertEqual(SmartExtractionService.parseTime("not a date", fallback: fallback), fallback)
     }
+
+    // MARK: - 云端抽取 JSON 解析
+
+    func testCloudJSONParsing() {
+        let json = """
+        {"transactions":[
+            {"amount":45.6,"direction":"expense","time":"2026-09-26 12:30","merchant":"美团外卖","note":"午餐"},
+            {"amount":3000,"direction":"income","time":"2026-09-25 10:00","merchant":"公司","note":"工资"}
+        ]}
+        """
+        let rows = CloudExtractionService.parseJSONContent(json, now: Date())
+        XCTAssertNotNil(rows)
+        XCTAssertEqual(rows?.count, 2)
+        XCTAssertEqual(rows?[0].amountCents, 4560)
+        XCTAssertEqual(rows?[0].kind, .expense)
+        XCTAssertEqual(rows?[1].kind, .income)
+        XCTAssertEqual(rows?[1].amountCents, 300000)
+    }
+
+    func testCloudJSONWithMarkdownFence() {
+        let fenced = """
+        ```json
+        {"transactions":[{"amount":19.9,"direction":"expense","time":"2026-09-26 08:00","merchant":"瑞幸","note":"咖啡"}]}
+        ```
+        """
+        let rows = CloudExtractionService.parseJSONContent(fenced, now: Date())
+        XCTAssertEqual(rows?.count, 1)
+        XCTAssertEqual(rows?[0].amountCents, 1990)
+        XCTAssertEqual(rows?[0].counterparty, "瑞幸")
+    }
+
+    func testCloudJSONInvalidReturnsNil() {
+        XCTAssertNil(CloudExtractionService.parseJSONContent("不是 JSON", now: Date()))
+    }
+
+    func testCloudAIConfigRoundTrip() {
+        let suiteName = "qingji.cloudai.tests"
+        let suite = UserDefaults(suiteName: suiteName)!
+        suite.removePersistentDomain(forName: suiteName)
+
+        var config = CloudAIConfig(enabled: true,
+                                   baseURL: "https://api.deepseek.com/v1",
+                                   apiKey: "sk-test",
+                                   model: "deepseek-chat")
+        CloudAIStore.save(config, defaults: suite)
+        let loaded = CloudAIStore.load(defaults: suite)
+        XCTAssertEqual(loaded, config)
+        XCTAssertTrue(loaded.isConfigured)
+
+        config.apiKey = ""
+        XCTAssertFalse(config.isConfigured)
+    }
 }
