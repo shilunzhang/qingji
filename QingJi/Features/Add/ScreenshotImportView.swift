@@ -46,15 +46,31 @@ struct ScreenshotImportView: View {
             Section {
                 HStack(spacing: 10) {
                     PhotosPicker(selection: $pickerItems, maxSelectionCount: 5, matching: .images) {
-                        Label("相册选择", systemImage: "photo.on.rectangle")
-                            .frame(maxWidth: .infinity)
+                        VStack(spacing: 6) {
+                            Image(systemName: "photo.on.rectangle")
+                                .font(.title3)
+                            Text("从相册选截图")
+                                .font(.subheadline.weight(.medium))
+                            Text("选择已保存的支付截图")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, vertical: 14)
                     }
                     if CameraPicker.isAvailable {
                         Button {
                             showCamera = true
                         } label: {
-                            Label("拍照识别", systemImage: "camera")
-                                .frame(maxWidth: .infinity)
+                            VStack(spacing: 6) {
+                                Image(systemName: "camera")
+                                    .font(.title3)
+                                Text("拍照识别")
+                                    .font(.subheadline.weight(.medium))
+                                Text("现场拍摄支付页面")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, vertical: 14)
                         }
                     }
                 }
@@ -66,6 +82,8 @@ struct ScreenshotImportView: View {
                     }
                 }
             } footer: {
+                Text("从相册选截图 = 打开照片图库选择；拍照识别 = 打开相机现场拍摄。两个入口都只识别支付/账单页面")
+            }
                 Text("支持支付宝/微信等支付成功页截图，自动识别金额、时间与收款方，识别后可修改再保存")
             }
 
