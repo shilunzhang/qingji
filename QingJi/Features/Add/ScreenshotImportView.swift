@@ -15,6 +15,7 @@ struct ScreenshotImportView: View {
     @State private var entries: [DraftEntry] = []
     @State private var processing = false
     @State private var savedCount = 0
+    @State private var showCamera = false
     @State private var pendingDuplicate: DuplicateMatch?
     @State private var confirmDraftID: DraftEntry.ID?
     @State private var duplicateBlockMessage: String?
@@ -42,9 +43,19 @@ struct ScreenshotImportView: View {
     var body: some View {
         List {
             Section {
-                PhotosPicker(selection: $pickerItems, maxSelectionCount: 5, matching: .images) {
-                    Label("选择支付截图", systemImage: "photo.on.rectangle.angled")
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 10) {
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 5, matching: .images) {
+                        Label("相册选择", systemImage: "photo.on.rectangle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    if CameraPicker.isAvailable {
+                        Button {
+                            showCamera = true
+                        } label: {
+                            Label("拍照识别", systemImage: "camera")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
                 }
                 if processing {
                     HStack {
@@ -69,6 +80,12 @@ struct ScreenshotImportView: View {
             }
         }
         .navigationTitle("截图记账")
+        .sheet(isPresented: $showCamera) {
+            CameraPicker { image in
+                processImage(image)
+            }
+            .ignoresSafeArea()
+        }
         .onChange(of: pickerItems.count) { _, _ in
             if !pickerItems.isEmpty {
                 processItems()
@@ -185,6 +202,12 @@ struct ScreenshotImportView: View {
     }
 
     private func commit(_ entry: DraftEntry, cents: Int64, account: Account) {
+        // F-18 商户记忆：分类未选时按商户名匹配历史分类预填
+        var entry = entry
+        if entry.category == nil, !entry.counterparty.isEmpty {
+            entry.category = CategoryPredictor.category(forMerchant: entry.counterparty, in: history)
+        }
+
         let noteText = entry.note.isEmpty ? entry.counterparty : entry.note
         let tx = Transaction(kind: entry.kind,
                              amountCents: cents,
@@ -203,6 +226,17 @@ struct ScreenshotImportView: View {
     }
 
     // MARK: - 识别流程
+
+    /// 拍照/相册共用：智能抽取 → 草稿卡
+    private func processImage(_ image: UIImage) {
+        Task {
+            let rows = await SmartExtractionService.extractRows(from: image)
+            let newEntries = rows.map { makeEntry(from: $0) }
+            await MainActor.run {
+                entries.append(contentsOf: newEntries)
+            }
+        }
+    }
 
     private func processItems() {
         let items = pickerItems

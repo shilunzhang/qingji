@@ -59,4 +59,21 @@ enum CategoryPredictor {
         guard hasHistory else { return nil }
         return ranked(categories: categories, transactions: transactions, kind: kind, at: date, calendar: calendar).first
     }
+
+    // MARK: - 商户记忆（文档 F-18）
+
+    /// 按商户名匹配历史交易（备注或分类名含关键词），返回最近一次的分类。
+    /// 用于扫描/拍照草稿的分类预填——同商户第二次识别自动带上首次分类。
+    static func category(forMerchant merchant: String, in transactions: [Transaction]) -> Category? {
+        let keyword = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard keyword.count >= 2 else { return nil }
+
+        let matched = transactions.filter { tx in
+            guard tx.category != nil else { return false }
+            if tx.note.contains(keyword) { return true }
+            if let name = tx.category?.name, name.contains(keyword) { return true }
+            return tx.displayTitle.contains(keyword)
+        }
+        return matched.sorted { $0.date > $1.date }.first?.category
+    }
 }

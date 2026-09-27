@@ -23,6 +23,12 @@ struct TransactionRowView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 AmountText(tx.amountCents, kind: tx.type)
+                if tx.hasDiscount {
+                    Text("原价 \(Money.string(fromCents: tx.originalAmountCents))")
+                        .font(.caption2)
+                        .strikethrough()
+                        .foregroundStyle(.tertiary)
+                }
                 if tx.type == .transfer {
                     Text("\(tx.account?.name ?? "") → \(tx.toAccount?.name ?? "")")
                         .font(.caption2)

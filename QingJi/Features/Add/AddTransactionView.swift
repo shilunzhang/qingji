@@ -40,6 +40,9 @@ struct AddTransactionView: View {
     @State private var showAccountPicker = false
     @State private var showToAccountPicker = false
     @State private var didSetup = false
+    @State private var originalText = ""
+    @State private var showCamera = false
+    @State private var hintMessage: String?
     @State private var pendingDuplicate: DuplicateMatch?
     @State private var showDuplicateConfirm = false
     @State private var duplicateBlockMessage: String?
@@ -93,6 +96,14 @@ struct AddTransactionView: View {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Image(systemName: "camera.viewfinder")
+                    }
+                    .accessibilityLabel("拍照识别")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("保存") { save() }
                         .fontWeight(.semibold)
                         .disabled(!canSave)
@@ -114,6 +125,12 @@ struct AddTransactionView: View {
                     toAccount = picked
                 }
             }
+            .sheet(isPresented: $showCamera) {
+                CameraPicker { image in
+                    handleCapturedImage(image)
+                }
+                .ignoresSafeArea()
+            }
             .alert("疑似重复账目", isPresented: $showDuplicateConfirm) {
                 Button("仍要保存") {
                     if let cents = amountCents, cents > 0, let account {
@@ -131,6 +148,14 @@ struct AddTransactionView: View {
                 Button("好的", role: .cancel) {}
             } message: {
                 Text(duplicateBlockMessage ?? "")
+            }
+            .alert("提示", isPresented: Binding(
+                get: { hintMessage != nil },
+                set: { if !$0 { hintMessage = nil } }
+            )) {
+                Button("好的", role: .cancel) {}
+            } message: {
+                Text(hintMessage ?? "")
             }
             .onChange(of: photoItems.count) { _, _ in
                 if !photoItems.isEmpty {
@@ -184,6 +209,22 @@ struct AddTransactionView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .opacity(amountText.isEmpty ? 0 : 1)
+            }
+            HStack(spacing: 6) {
+                Text("原价")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("选填，有优惠时填写", text: $originalText)
+                    .keyboardType(.decimalPad)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                if let original = Money.cents(fromString: originalText),
+                   let cents = amountCents, original > cents {
+                    Text("省 \(Money.string(fromCents: original - cents))")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Theme.income)
+                }
             }
         }
         .card()
@@ -489,6 +530,31 @@ struct AddTransactionView: View {
             toAccount = tx.toAccount
             date = tx.date
             note = tx.note
+            originalText = tx.originalAmountCents > 0 ? Money.inputString(fromCents: tx.originalAmountCents) : ""
+        }
+    }
+
+    /// 拍照识别（F-15）：智能抽取后填入第一笔，多笔提示走「截图记账」
+    private func handleCapturedImage(_ image: UIImage) {
+        Task {
+            let rows = await SmartExtractionService.extractRows(from: image)
+            await MainActor.run {
+                guard let first = rows.first, let cents = first.amountCents, cents > 0 else {
+                    hintMessage = "未识别出支付信息，请手动填写"
+                    return
+                }
+                amountText = Money.inputString(fromCents: cents)
+                if let extractedDate = first.date { date = extractedDate }
+                if let extractedKind = first.kind { kind = extractedKind }
+                if let extractedNote = first.note, !extractedNote.isEmpty {
+                    note = extractedNote
+                } else if let merchant = first.counterparty, !merchant.isEmpty {
+                    note = merchant
+                }
+                if rows.count > 1 {
+                    hintMessage = "识别到 \(rows.count) 笔，已填入第一笔；其余请用「截图记账」处理"
+                }
+            }
         }
     }
 
@@ -497,6 +563,7 @@ struct AddTransactionView: View {
         guard let cents = amountCents, cents > 0, let account else { return }
         var excludeID: UUID?
         if case .edit(let editing) = mode { excludeID = editing.id }
+        let original = Money.cents(fromString: originalText) ?? 0
 
         let match = DuplicateGuard.findDuplicate(of: kind,
                                                  amountCents: cents,
@@ -505,7 +572,7 @@ struct AddTransactionView: View {
                                                  excludeID: excludeID)
         switch DuplicateGuard.manualDecision(for: match) {
         case .allow:
-            commit(cents: cents, account: account)
+            commit(cents: cents, account: account, originalCents: original)
         case .confirm(let duplicated):
             pendingDuplicate = duplicated
             showDuplicateConfirm = true
@@ -514,7 +581,7 @@ struct AddTransactionView: View {
         }
     }
 
-    private func commit(cents: Int64, account: Account) {
+    private func commit(cents: Int64, account: Account, originalCents: Int64) {
         let effectiveToAccount = kind == .transfer ? toAccount : nil
         let effectiveCategory = kind == .transfer ? nil : selectedCategory
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -527,7 +594,8 @@ struct AddTransactionView: View {
                                  account: account,
                                  toAccount: effectiveToAccount,
                                  category: effectiveCategory,
-                                 note: trimmedNote)
+                                 note: trimmedNote,
+                                 originalAmountCents: originalCents)
             context.insert(tx)
             attachPhotos(to: tx)
         case .edit(let tx):
@@ -539,6 +607,7 @@ struct AddTransactionView: View {
             tx.toAccount = effectiveToAccount
             tx.category = effectiveCategory
             tx.updatedAt = Date.now
+            tx.originalAmountCents = originalCents
             attachPhotos(to: tx)
         }
         try? context.save()

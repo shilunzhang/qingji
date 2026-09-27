@@ -20,6 +20,8 @@ struct OverviewView: View {
                 transactionSections
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(uiColor: .systemBackground))
             .navigationTitle("明细")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -70,17 +72,22 @@ struct OverviewView: View {
         }
     }
 
-    // MARK: - 视图
+    // MARK: - 视图（极简杂志系：白底、无卡片、大字汇总，文档 F-19）
 
     private var monthSection: some View {
         Section {
-            PeriodNavHeader(
-                title: DateHelpers.title(of: .month, for: monthAnchor),
-                onPrev: { monthAnchor = DateHelpers.shift(monthAnchor, by: -1, of: .month) },
-                onNext: { monthAnchor = DateHelpers.shift(monthAnchor, by: 1, of: .month) }
-            )
-            .padding(.vertical, 2)
-            TotalsBar(expenseCents: monthTotals.expense, incomeCents: monthTotals.income)
+            VStack(alignment: .leading, spacing: 8) {
+                PeriodNavHeader(
+                    title: DateHelpers.title(of: .month, for: monthAnchor),
+                    onPrev: { monthAnchor = DateHelpers.shift(monthAnchor, by: -1, of: .month) },
+                    onNext: { monthAnchor = DateHelpers.shift(monthAnchor, by: 1, of: .month) }
+                )
+                TotalsBar(expenseCents: monthTotals.expense, incomeCents: monthTotals.income)
+            }
+            .padding(.top, 6)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, trailing: 16, bottom: 8))
         }
     }
 
@@ -105,7 +112,9 @@ struct OverviewView: View {
                 }
                 .padding(.vertical, 2)
             }
-            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, trailing: 16, bottom: 4))
         }
     }
 
@@ -129,8 +138,11 @@ struct OverviewView: View {
         }
         .padding(10)
         .frame(width: 108, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .background(Color(uiColor: .systemBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(uiColor: .separator).opacity(0.4), lineWidth: 1)
+        )
     }
 
     @ViewBuilder

@@ -11,6 +11,7 @@ struct SettingsView: View {
 
     @State private var exportURL: URL?
     @State private var sensitivity: DuplicateSensitivity = DuplicateGuard.sensitivity
+    @State private var autoDelete = AlbumScanSettings.autoDeleteProcessedScreenshots
     @State private var showAlbumScan = false
     @State private var showSetupGuide = false
     @State private var showAutoPostLog = false
@@ -31,6 +32,16 @@ struct SettingsView: View {
         Binding(
             get: { CaptureSettings.autoSave },
             set: { CaptureSettings.autoSave = $0 }
+        )
+    }
+
+    private var autoDeleteBinding: Binding<Bool> {
+        Binding(
+            get: { autoDelete },
+            set: { newValue in
+                autoDelete = newValue
+                AlbumScanSettings.autoDeleteProcessedScreenshots = newValue
+            }
         )
     }
 
@@ -63,6 +74,7 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("静默自动入账", isOn: autoSaveBinding)
+                    Toggle("入账后删除已处理截图", isOn: autoDeleteBinding)
                     Button("云端智能抽取（自带 Key）") { showCloudAI = true }
                         .foregroundStyle(.primary)
                     Button("快捷指令配置指引") { showSetupGuide = true }
@@ -81,7 +93,7 @@ struct SettingsView: View {
                 } header: {
                     Text("自动记账")
                 } footer: {
-                    Text("识别增强优先级：端侧大模型（Apple Intelligence）→ 云端（自带 Key，默认关闭）→ 规则。开启静默自动入账后，识别到支付将直接入账（仍受防重保护）")
+                    Text("识别增强优先级：端侧大模型（Apple Intelligence）→ 云端（自带 Key，默认关闭）→ 规则。开启静默自动入账后，识别到支付将直接入账（仍受防重保护）。删除截图仅针对已入账的，删除前系统会弹确认框")
                 }
 
                 Section("管理") {

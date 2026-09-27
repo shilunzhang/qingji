@@ -1,5 +1,33 @@
 import XCTest
+import SwiftData
 @testable import QingJi
+
+private typealias Category = QingJi.Category
+
+/// F-18 商户记忆分类预测
+final class MerchantMemoryTests: XCTestCase {
+
+    func testMerchantMemoryMatchesHistory() {
+        let coffee = Category(name: "咖啡", kind: .expense)
+        let lastWeek = Date.now.addingTimeInterval(-7 * 86_400)
+        let history = [
+            Transaction(kind: .expense, amountCents: 1900,
+                        date: lastWeek, category: coffee, note: "瑞幸咖啡 生椰拿铁"),
+            Transaction(kind: .expense, amountCents: 500,
+                        date: Date.now, category: coffee), // 无备注不干扰
+        ]
+
+        let result = CategoryPredictor.category(forMerchant: "瑞幸", in: history)
+        XCTAssertEqual(result?.name, "咖啡")
+
+        // 无匹配 → nil
+        XCTAssertNil(CategoryPredictor.category(forMerchant: "不存在商户", in: history))
+
+        // 关键词过短 → nil
+        XCTAssertNil(CategoryPredictor.category(forMerchant: "瑞", in: history))
+    }
+}
+
 
 /// F-13 相册扫描：支付页判定 + 已处理登记 + 增量时间
 final class AlbumScanTests: XCTestCase {

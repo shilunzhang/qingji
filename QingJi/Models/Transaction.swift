@@ -51,6 +51,8 @@ final class Transaction {
     var externalID: String = ""
     /// 账目来源（TxSource.rawValue，文档 F-14）
     var source: String = TxSource.manual.rawValue
+    /// 原价（分），0 表示无折扣信息（文档 F-16）
+    var originalAmountCents: Int64 = 0
 
     @Relationship var account: Account? = nil
     @Relationship var toAccount: Account? = nil
@@ -60,6 +62,8 @@ final class Transaction {
 
     var type: TxKind { TxKind(rawValue: kind) ?? .expense }
     var txSource: TxSource { TxSource(rawValue: source) ?? .manual }
+    /// 有折扣（原价大于实付）时为 true
+    var hasDiscount: Bool { originalAmountCents > amountCents }
     /// 元（Decimal），仅供展示/图表
     var yuan: Decimal { Money.yuan(fromCents: amountCents) }
 
@@ -72,7 +76,8 @@ final class Transaction {
          note: String = "",
          recurringRuleID: UUID? = nil,
          externalID: String = "",
-         source: TxSource = .manual) {
+         source: TxSource = .manual,
+         originalAmountCents: Int64 = 0) {
         self.kind = kind.rawValue
         self.amountCents = amountCents
         self.date = date
@@ -83,6 +88,7 @@ final class Transaction {
         self.recurringRuleID = recurringRuleID
         self.externalID = externalID
         self.source = source.rawValue
+        self.originalAmountCents = originalAmountCents
     }
 
     /// 行标题：分类名 / 转账 / 未分类

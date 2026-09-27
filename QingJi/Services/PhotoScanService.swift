@@ -2,6 +2,17 @@ import Foundation
 import Photos
 import UIKit
 
+/// 相册扫描相关设置（文档 F-17）
+enum AlbumScanSettings {
+    private static let autoDeleteKey = "qingji.album.autoDelete"
+
+    /// 入账后自动删除已处理的截图（默认关；删除时系统会弹确认框）
+    static var autoDeleteProcessedScreenshots: Bool {
+        get { UserDefaults.standard.bool(forKey: autoDeleteKey) }
+        set { UserDefaults.standard.set(newValue, forKey: autoDeleteKey) }
+    }
+}
+
 /// 相册截图扫描（文档 F-13，Tier 2）：增量读取「屏幕快照」，全本机处理
 enum PhotoScanService {
 

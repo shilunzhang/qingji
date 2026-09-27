@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Photos
 
 /// 相册扫描待确认草稿（F-13）。一张截图可解析出多笔（id = assetID#序号）
 struct AlbumScanDraft: Identifiable {
@@ -94,6 +95,13 @@ final class AlbumScanModel: ObservableObject {
               let account = draft.account ?? fallbackAccount else { return }
 
         let history = (try? context.fetch(FetchDescriptor<Transaction>())) ?? []
+
+        // F-18 商户记忆：分类未选时按商户名匹配历史分类预填
+        var draft = draft
+        if draft.category == nil, !draft.counterparty.isEmpty {
+            draft.category = CategoryPredictor.category(forMerchant: draft.counterparty, in: history)
+        }
+
         let match = DuplicateGuard.findDuplicate(of: draft.kind,
                                                  amountCents: cents,
                                                  date: draft.date,
@@ -122,20 +130,42 @@ final class AlbumScanModel: ObservableObject {
                                                    ? "疑似重复：\(duplicated.summary)"
                                                    : noteText)
         }
-        finish(draft)
+        finish(draft, deleteAsset: AlbumScanSettings.autoDeleteProcessedScreenshots)
     }
 
-    /// 忽略：登记已处理，不再弹出
+    /// 忽略：登记已处理，不再弹出（不删除截图）
     func ignore(_ draft: AlbumScanDraft) {
-        finish(draft)
+        finish(draft, deleteAsset: false)
     }
 
-    /// 同一截图的多笔草稿全部处理完，才把截图标记为已处理
-    private func finish(_ draft: AlbumScanDraft) {
+    /// 同一截图的多笔草稿全部处理完，才把截图标记为已处理；
+    /// 入账成功且开关开启时删除对应截图（F-17，系统会弹确认框）
+    private func finish(_ draft: AlbumScanDraft, deleteAsset: Bool) {
         let assetID = draft.assetID
         drafts.removeAll { $0.id == draft.id }
         if !drafts.contains(where: { $0.assetID == assetID }) {
             AlbumScanStore.markProcessed(assetID)
+            if deleteAsset {
+                deleteAssetFromLibrary(assetID)
+            }
+        }
+    }
+
+    /// 删除相册中的已入账截图（iOS 必弹系统确认框，无法绕过）
+    private func deleteAssetFromLibrary(_ assetID: String) {
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetID], options: nil)
+        guard fetch.count > 0 else {
+            DiagLog.append("未找到待删除截图")
+            return
+        }
+        PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest.deleteAssets(fetch)
+        } completionHandler: { success, error in
+            if success {
+                DiagLog.append("已删除已入账截图")
+            } else {
+                DiagLog.append("截图删除未完成：\(error?.localizedDescription ?? "用户取消")")
+            }
         }
     }
 
