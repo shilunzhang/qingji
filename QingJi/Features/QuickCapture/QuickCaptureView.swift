@@ -52,7 +52,7 @@ struct QuickCaptureView: View {
                 reviewStage
             }
         }
-        .navigationTitle("截图入账")
+        .navigationTitle(source == .camera ? "拍照入账" : "截图入账")
         .sheet(item: $categoryTarget) { target in
             CategoryPickerSheet(selected: nil, defaultKind: .expense) { picked in
                 if let index = entries.firstIndex(where: { $0.id == target.entryID }) {
