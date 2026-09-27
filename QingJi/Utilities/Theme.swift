@@ -46,3 +46,19 @@ struct CardBackground: ViewModifier {
 extension View {
     func card() -> some View { modifier(CardBackground()) }
 }
+
+/// 水滴玻璃卡片：iOS 26 用 Liquid Glass 效果，低版本回退材质模糊
+extension View {
+    @ViewBuilder
+    func glassCard(cornerRadius: CGFloat) -> some View {
+        if #available(iOS 26.0, *) {
+            self.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: cornerRadius))
+        } else {
+            self.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+                )
+        }
+    }
+}

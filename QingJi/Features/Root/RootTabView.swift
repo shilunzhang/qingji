@@ -63,7 +63,7 @@ struct RootTabView: View {
         .onChange(of: selection) { _, newValue in
             if newValue == .add {
                 selection = lastSelection
-                showAddMenu = true
+                withAnimation(.spring(duration: 0.32)) { showAddMenu = true }
             } else {
                 lastSelection = newValue
             }
@@ -133,10 +133,10 @@ struct RootTabView: View {
     private var addMenuOverlay: some View {
         if showAddMenu {
             ZStack {
-                Color.black.opacity(0.4)
+                Color.black.opacity(0.22)
                     .ignoresSafeArea()
                     .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.15)) { showAddMenu = false }
+                        withAnimation(.spring(duration: 0.3)) { showAddMenu = false }
                     }
                 VStack(spacing: 14) {
                     HStack(spacing: 14) {
@@ -156,20 +156,20 @@ struct RootTabView: View {
                         }
                     }
                     Button {
-                        withAnimation(.easeOut(duration: 0.15)) { showAddMenu = false }
+                        withAnimation(.spring(duration: 0.3)) { showAddMenu = false }
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.bold))
                             .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background(.ultraThinMaterial, in: Circle())
                     }
                 }
                 .padding(18)
-                .background(Color(uiColor: .systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .shadow(color: .black.opacity(0.2), radius: 20, y: 4)
-                .padding(.horizontal, 48)
+                .frame(maxWidth: 320)
+                .glassCard(cornerRadius: 28)
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
-            .transition(.opacity)
         }
     }
 
@@ -192,8 +192,7 @@ struct RootTabView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(Color(uiColor: .tertiarySystemFill).opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
     }
