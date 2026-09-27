@@ -50,7 +50,7 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
             }
         }
 
-        private func loadImage(from provider: NSItemProvider) async -> UIImage? {
+        private static func loadImage(from provider: NSItemProvider) async -> UIImage? {
             await withCheckedContinuation { continuation in
                 provider.loadObject(ofClass: UIImage.self) { object, _ in
                     continuation.resume(returning: object as? UIImage)
