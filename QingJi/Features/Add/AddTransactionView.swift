@@ -219,16 +219,22 @@ struct AddTransactionView: View {
                     .font(.caption)
                     .monospacedDigit()
                     .multilineTextAlignment(.trailing)
-                if let original = Money.cents(fromString: originalText),
-                   let cents = amountCents, original > cents {
-                    Text("省 \(Money.string(fromCents: original - cents))")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Theme.income)
-                }
+                savingsText
             }
         }
         .card()
         .padding(.horizontal, 16)
+    }
+
+    /// 实付小于原价时显示「省 ¥X」
+    private var savingsText: Text? {
+        guard let original = Money.cents(fromString: originalText),
+              let cents = amountCents,
+              original > cents else { return nil }
+        let saved = Money.string(fromCents: original - cents)
+        return Text("省 \(saved)")
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(Theme.income)
     }
 
     private var displayAmount: String {
