@@ -64,7 +64,7 @@ struct FloatingAddButton: View {
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 58, height: 58)
-                .glassEffect(.regular.tint(.accent).interactive(), in: Circle())
+                .glassEffect(.regular.tint(Color.accentColor).interactive(), in: Circle())
                 .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
         } else {
             Image(systemName: isExpanded ? "xmark" : "plus")
