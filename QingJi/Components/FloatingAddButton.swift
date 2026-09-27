@@ -7,7 +7,7 @@ struct FloatingAddButton: View {
 
     @State private var isExpanded = false
 
-    private let radius: CGFloat = 92
+    private let radius: CGFloat = 112
 
     private var arcItems: [(icon: String, hex: String, angle: Double, sheet: AddSheet)] {
         [
@@ -36,13 +36,16 @@ struct FloatingAddButton: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(Color.accentColor)
-                    .frame(width: 56, height: 56)
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 58, height: 58)
+                    .overlay(
+                        Circle().strokeBorder(Color.white.opacity(0.4), lineWidth: 1.5)
+                    )
                 Image(systemName: isExpanded ? "xmark" : "plus")
                     .font(.title2.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.accentColor)
             }
-            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         }
         .buttonStyle(.plain)
     }

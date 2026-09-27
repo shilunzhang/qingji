@@ -56,7 +56,7 @@ struct QuickCaptureView: View {
                     case .picking:
                         pickingView
                     case .review:
-                        reviewList
+                        reviewListView
                     case .done:
                         doneView
                     }
@@ -71,7 +71,9 @@ struct QuickCaptureView: View {
             }
         }
         .sheet(isPresented: $showCamera) {
-            CameraPicker { image in
+            CameraPicker(onImage: { image in
+                handleImages([image])
+            }, onCancel: { })
                 handleImages([image])
             }
         }
