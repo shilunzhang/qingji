@@ -2,13 +2,12 @@ import SwiftUI
 import SwiftData
 import UIKit
 
-/// 截图/拍照入账直通流程（文档 F-12/F-15 重构）：
-/// source=album → 直接打开系统相册选择器（无中间选项卡）
-/// source=camera → 先相机拍摄
-/// 选/拍完成后自动识别 → 草稿逐笔确认（含防重/商户记忆/渠道徽章）
+/// 截图/拍照入账（文档 F-12/F-15）
+/// 流程：选图/拍照 → 自动识别 → 草稿卡确认 → 入账
+/// 每一步都有明确的用户反馈，不会静默失败
 struct QuickCaptureView: View {
     enum Source { case album, camera }
-    enum Stage { case picking, review }
+    enum Stage { case picking, review, done }
 
     let source: Source
 
@@ -19,6 +18,8 @@ struct QuickCaptureView: View {
     @State private var stage: Stage = .picking
     @State private var entries: [DraftEntry] = []
     @State private var processing = false
+    @State private var showLibraryPicker = false
+    @State private var showCamera = false
     @State private var savedCount = 0
     @State private var categoryTarget: CategoryTarget?
     @State private var pendingDuplicate: DuplicateMatch?
@@ -44,15 +45,36 @@ struct QuickCaptureView: View {
     }
 
     var body: some View {
-        Group {
-            switch stage {
-            case .picking:
-                pickingStage
-            case .review:
-                reviewStage
+        NavigationStack {
+            ZStack {
+                Color(uiColor: .systemBackground).ignoresSafeArea()
+
+                if processing {
+                    processingView
+                } else {
+                    switch stage {
+                    case .picking:
+                        pickingView
+                    case .review:
+                        reviewList
+                    case .done:
+                        doneView
+                    }
+                }
             }
         }
-        .navigationTitle(source == .camera ? "拍照入账" : "截图入账")
+        .navigationTitle(navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showLibraryPicker) {
+            PhotoLibraryPicker(maxCount: 5) { images in
+                handleImages(images)
+            }
+        }
+        .sheet(isPresented: $showCamera) {
+            CameraPicker { image in
+                handleImages([image])
+            }
+        }
         .sheet(item: $categoryTarget) { target in
             CategoryPickerSheet(selected: nil, defaultKind: .expense) { picked in
                 if let index = entries.firstIndex(where: { $0.id == target.entryID }) {
@@ -64,98 +86,102 @@ struct QuickCaptureView: View {
             pendingDuplicate: $pendingDuplicate,
             confirmEntryID: $confirmEntryID,
             blockMessage: $duplicateBlockMessage,
-            onConfirm: {
-                guard let id = confirmEntryID,
-                      let index = entries.firstIndex(where: { $0.id == id }),
-                      let cents = Money.cents(fromString: entries[index].amountText), cents > 0,
-                      let account = resolveAccount(for: entries[index]) else { return }
-                commit(entries[index], cents: cents, account: account)
-            }
+            onConfirm: { confirmAndSave() }
         ))
+    }
+
+    private var navigationTitle: String {
+        source == .camera ? "拍照入账" : "截图入账"
     }
 
     // MARK: - 选图阶段
 
     @ViewBuilder
-    private var pickingStage: some View {
-        switch source {
-        case .album:
-            PhotoLibraryPicker(maxCount: 5) { images in
-                Task { await handleImages(images) }
+    private var pickingView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+
+            Text(source == .album
+                 ? "打开相册选择支付/账单截图\n（最多 5 张）"
+                 : "打开相机拍摄支付页面")
+
+            Button {
+                if source == .album {
+                    showLibraryPicker = true
+                } else {
+                    showCamera = true
+                }
+            } label: {
+                Label(source == .album ? "打开相册" : "打开相机",
+                      systemImage: source == .album ? "photo.badge.plus" : "camera")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
             }
-            .ignoresSafeArea()
-        case .camera:
-            CameraPicker(
-                onImage: { image in
-                    Task { await handleImages([image]) }
-                },
-                onCancel: { }
-            )
-            .ignoresSafeArea()
+            .buttonStyle(.borderedProminent)
+            .padding(.horizontal, 32)
         }
-        if processing {
-            VStack(spacing: 10) {
-                ProgressView()
-                Text("识别中…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 30)
-            .frame(maxWidth: .infinity)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - 确认阶段
+    // MARK: - 处理中
+
+    private var processingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .scaleEffect(1.5)
+            Text("正在识别截图内容…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - 确认阶段（草稿卡）
 
     @ViewBuilder
-    private var reviewStage: some View {
+    private var reviewListView: some View {
         List {
             if entries.isEmpty {
                 Section {
-                    if savedCount > 0 {
-                        Label("本次已保存 \(savedCount) 笔", systemImage: "checkmark.seal")
-                            .foregroundStyle(Theme.income)
-                    } else {
-                        EmptyStateView(icon: "photo.badge.exclamationmark",
-                                       title: "没有识别出可入账的内容",
-                                       hint: "返回后可重新选择截图，或改用手动录入")
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.title)
+                            .foregroundStyle(.orange)
+                        Text("未能从截图中识别出金额")
+                            .font(.subheadline)
+                        Text("请截图更清晰的支付成功页面后重试")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
                 }
             }
             ForEach($entries) { $entry in
-                entrySection($entry)
+                entryCard($entry)
+            }
+            if savedCount > 0 {
+                Section {
+                    Label("已保存 \(savedCount) 笔", systemImage: "checkmark.seal")
+                        .foregroundStyle(Theme.income)
+                }
             }
         }
     }
 
-    private func entrySection(_ entry: Binding<DraftEntry>) -> some View {
+    private func entryCard(_ entry: Binding<DraftEntry>) -> some View {
         Section {
-            Picker("类型", selection: entry.kind) {
-                Text("支出").tag(TxKind.expense)
-                Text("收入").tag(TxKind.income)
-            }
-            .pickerStyle(.segmented)
             TextField("金额（元）", text: entry.amountText)
                 .keyboardType(.decimalPad)
-                .font(.title3.weight(.semibold))
+                .font(.title3.weight(.bold))
                 .monospacedDigit()
+
             DatePicker("时间", selection: entry.date)
+
             TextField("收款方/商户", text: entry.counterparty)
-            TextField("备注", text: entry.note)
-            if let channel = entry.wrappedValue.channel {
-                HStack {
-                    Text("渠道")
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(Color(hex: channel.colorHex))
-                            .frame(width: 6, height: 6)
-                        Text(channel.title)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+
             HStack {
                 Text("账户")
                 Spacer()
@@ -166,39 +192,62 @@ struct QuickCaptureView: View {
                         }
                     }
                 }
-                .foregroundStyle(entry.wrappedValue.account == nil ? Color.orange : Color.primary)
+                .foregroundStyle(.primary)
             }
+
             HStack {
                 Text("分类")
                 Spacer()
                 Button(entry.wrappedValue.category?.name ?? "未分类") {
                     categoryTarget = CategoryTarget(entryID: entry.wrappedValue.id)
                 }
-                .foregroundStyle(entry.wrappedValue.category == nil ? .secondary : .primary)
+                .foregroundStyle(.secondary)
             }
+
             if !entry.wrappedValue.warning.isEmpty {
                 Label(entry.wrappedValue.warning, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(Theme.alert)
             }
+
             Button {
                 save(entry.wrappedValue)
             } label: {
                 Text("确认入账")
                     .frame(maxWidth: .infinity)
-                    .fontWeight(.medium)
+                    .fontWeight(.semibold)
             }
             .disabled(!canSave(entry.wrappedValue))
         }
     }
 
-    // MARK: - 数据与动作
+    // MARK: - 完成
+
+    private var doneView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 56))
+                .foregroundStyle(Theme.income)
+            Text("本批处理完成")
+                .font(.title3.weight(.semibold))
+            Button("继续识别") {
+                stage = .picking
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - 数据
 
     private var activeAccounts: [Account] {
         accounts.filter { !$0.isArchived }
     }
 
-    /// 渠道 → 默认账户（文档 v1.4 渠道识别）
+    private var history: [Transaction] {
+        (try? context.fetch(FetchDescriptor<Transaction>())) ?? []
+    }
+
     private func resolveAccount(for entry: DraftEntry) -> Account? {
         let channelAccount = entry.channel?.accountKind.flatMap { kind in
             accounts.first { $0.kind == kind && !$0.isArchived }
@@ -226,16 +275,19 @@ struct QuickCaptureView: View {
             pendingDuplicate = duplicated
             confirmEntryID = entry.id
         case .block(let duplicated):
-            duplicateBlockMessage = "已存在 \(duplicated.summary)。当前防重策略为「阻止」，如确需保存请在「我的 → 自动记账」中调整灵敏度。"
+            duplicateBlockMessage = "已存在 \(duplicated.summary)。"
         }
     }
 
-    private var history: [Transaction] {
-        (try? context.fetch(FetchDescriptor<Transaction>())) ?? []
+    private func confirmAndSave() {
+        guard let id = confirmEntryID,
+              let index = entries.firstIndex(where: { $0.id == id }),
+              let cents = Money.cents(fromString: entries[index].amountText), cents > 0,
+              let account = resolveAccount(for: entries[index]) else { return }
+        commit(entries[index], cents: cents, account: account)
     }
 
     private func commit(_ entry: DraftEntry, cents: Int64, account: Account) {
-        // F-18 商户记忆：分类未选时按商户名匹配历史分类预填
         var entry = entry
         if entry.category == nil, !entry.counterparty.isEmpty {
             entry.category = CategoryPredictor.category(forMerchant: entry.counterparty, in: history)
@@ -248,7 +300,6 @@ struct QuickCaptureView: View {
                              account: account,
                              category: entry.category,
                              note: noteText,
-                             source: .ocr,
                              channel: entry.channel)
         context.insert(tx)
         try? context.save()
@@ -259,7 +310,9 @@ struct QuickCaptureView: View {
         entries.removeAll { $0.id == entry.id }
     }
 
-        private func handleImages(_ images: [UIImage]) {
+    // MARK: - 图片处理
+
+    private func handleImages(_ images: [UIImage]) {
         processing = true
         Task { @MainActor in
             var drafts: [DraftEntry] = []
@@ -270,7 +323,6 @@ struct QuickCaptureView: View {
             }
             entries.append(contentsOf: drafts)
             processing = false
-            stage = .review
         }
     }
 
