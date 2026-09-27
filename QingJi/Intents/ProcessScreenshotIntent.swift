@@ -37,7 +37,12 @@ struct ProcessScreenshotIntent: AppIntent {
 
         for (index, row) in rows.enumerated() {
             guard let cents = row.amountCents, cents > 0 else { continue }
-            let merchant = row.counterparty.isEmpty ? "支付" : row.counterparty
+            let merchant: String
+            if let name = row.counterparty, !name.isEmpty {
+                merchant = name
+            } else {
+                merchant = "支付"
+            }
             let tradeDate = row.date ?? .now
 
             // 同页指纹：加入行序号，同页多笔互不误伤（AC3，F-14 第 2 道）
