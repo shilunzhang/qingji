@@ -12,6 +12,7 @@ struct AddTransactionView: View {
             var date: Date? = nil
             var note: String? = nil
             var categoryID: UUID? = nil
+            var kind: TxKind? = nil
         }
 
         case create(TxKind, Prefill?)
@@ -41,7 +42,6 @@ struct AddTransactionView: View {
     @State private var showToAccountPicker = false
     @State private var didSetup = false
     @State private var originalText = ""
-    @State private var showCamera = false
     @State private var hintMessage: String?
     @State private var pendingDuplicate: DuplicateMatch?
     @State private var pendingOriginalCents: Int64 = 0
@@ -83,12 +83,6 @@ struct AddTransactionView: View {
             AccountPickerSheet(title: "转入账户", selected: toAccount, excluding: account) { picked in
                 toAccount = picked
             }
-        }
-        .sheet(isPresented: $showCamera) {
-            CameraPicker { image in
-                handleCapturedImage(image)
-            }
-            .ignoresSafeArea()
         }
         .modifier(DuplicateAlertsModifier(
             showDuplicateConfirm: $showDuplicateConfirm,
@@ -158,14 +152,6 @@ struct AddTransactionView: View {
     private var toolbarItems: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Button("取消") { dismiss() }
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showCamera = true
-            } label: {
-                Image(systemName: "camera.viewfinder")
-            }
-            .accessibilityLabel("拍照识别")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button("保存") { save() }
@@ -551,6 +537,7 @@ struct AddTransactionView: View {
                 if let categoryID = prefill.categoryID {
                     selectedCategory = categories.first { $0.id == categoryID }
                 }
+                if let prefillKind = prefill.kind { kind = prefillKind }
             }
         case .edit(let tx):
             kind = tx.type
@@ -561,30 +548,6 @@ struct AddTransactionView: View {
             date = tx.date
             note = tx.note
             originalText = tx.originalAmountCents > 0 ? Money.inputString(fromCents: tx.originalAmountCents) : ""
-        }
-    }
-
-    /// 拍照识别（F-15）：智能抽取后填入第一笔，多笔提示走「截图记账」
-    private func handleCapturedImage(_ image: UIImage) {
-        Task {
-            let rows = await SmartExtractionService.extractRows(from: image)
-            await MainActor.run {
-                guard let first = rows.first, let cents = first.amountCents, cents > 0 else {
-                    hintMessage = "未识别出支付信息，请手动填写"
-                    return
-                }
-                amountText = Money.inputString(fromCents: cents)
-                if let extractedDate = first.date { date = extractedDate }
-                if let extractedKind = first.kind { kind = extractedKind }
-                if let extractedNote = first.note, !extractedNote.isEmpty {
-                    note = extractedNote
-                } else if let merchant = first.counterparty, !merchant.isEmpty {
-                    note = merchant
-                }
-                if rows.count > 1 {
-                    hintMessage = "识别到 \(rows.count) 笔，已填入第一笔；其余请用「截图记账」处理"
-                }
-            }
         }
     }
 

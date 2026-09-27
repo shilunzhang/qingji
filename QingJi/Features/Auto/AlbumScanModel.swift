@@ -16,6 +16,8 @@ struct AlbumScanDraft: Identifiable {
     var category: Category?
     var account: Account?
     var warning: String
+    /// 渠道（用于徽章与自动选账户）
+    var channel: TxChannel? = nil
 }
 
 /// 扫描模型：增量扫描 → OCR → 多笔解析 → 草稿；入账时逐条过 F-14 自动闸门
@@ -73,7 +75,8 @@ final class AlbumScanModel: ObservableObject {
                                                 note: row.note ?? "",
                                                 category: nil,
                                                 account: nil,
-                                                warning: ""))
+                                                warning: "",
+                                                channel: row.channel))
             }
         }
 
@@ -90,9 +93,8 @@ final class AlbumScanModel: ObservableObject {
     }
 
     /// 入账：过 F-14 自动决策闸门（疑似重复 → 记日志跳过）
-    func commit(_ draft: AlbumScanDraft, context: ModelContext, fallbackAccount: Account?) {
-        guard let cents = Money.cents(fromString: draft.amountText), cents > 0,
-              let account = draft.account ?? fallbackAccount else { return }
+    func commit(_ draft: AlbumScanDraft, context: ModelContext, accounts: [Account]) {
+        guard let cents = Money.cents(fromString: draft.amountText), cents > 0 else { return }
 
         let history = (try? context.fetch(FetchDescriptor<Transaction>())) ?? []
 
@@ -101,6 +103,12 @@ final class AlbumScanModel: ObservableObject {
         if draft.category == nil, !draft.counterparty.isEmpty {
             draft.category = CategoryPredictor.category(forMerchant: draft.counterparty, in: history)
         }
+
+        // 渠道 → 默认账户（文档 v1.4 渠道识别）
+        let channelAccount = draft.channel?.accountKind.flatMap { kind in
+            accounts.first { $0.kind == kind && !$0.isArchived }
+        }
+        guard let account = draft.account ?? channelAccount ?? accounts.first(where: { !$0.isArchived }) else { return }
 
         let match = DuplicateGuard.findDuplicate(of: draft.kind,
                                                  amountCents: cents,

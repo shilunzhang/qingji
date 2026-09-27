@@ -118,6 +118,20 @@ struct AlbumScanView: View {
             DatePicker("时间", selection: draft.date)
             TextField("收款方/商户", text: draft.counterparty)
             TextField("备注", text: draft.note)
+            if let channel = draft.wrappedValue.channel {
+                HStack {
+                    Text("渠道")
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(hex: channel.colorHex))
+                            .frame(width: 6, height: 6)
+                        Text(channel.title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             HStack {
                 Text("账户")
                 Spacer()
@@ -175,7 +189,6 @@ struct AlbumScanView: View {
     }
 
     private func save(_ draft: AlbumScanDraft) {
-        let fallback = activeAccounts.first
-        model.commit(draft, context: context, fallbackAccount: fallback)
+        model.commit(draft, context: context, accounts: activeAccounts)
     }
 }

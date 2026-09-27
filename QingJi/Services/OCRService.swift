@@ -84,6 +84,8 @@ enum PaymentTextParser {
         var kind: TxKind? = nil
         /// 语义化备注（端侧大模型生成，规则解析为 nil）
         var note: String? = nil
+        /// 消费渠道（v1.4 渠道识别）
+        var channel: TxChannel? = nil
     }
 
     private static let labeledAmountPattern =

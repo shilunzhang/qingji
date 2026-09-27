@@ -25,29 +25,49 @@ enum SmartExtractionService {
         let text = await OCRService.recognizeText(in: image)
         guard !text.isEmpty else { return [] }
 
+        var rows: [PaymentTextParser.ParsedPayment] = []
+
         // 云端档：用户显式配置了 API Key 才启用
         let cloudConfig = CloudAIStore.load()
         if cloudConfig.isConfigured {
             switch await CloudExtractionService.extract(text: text, config: cloudConfig) {
-            case .success(let rows):
-                DiagLog.append("云端抽取成功 \(rows.count) 笔（\(cloudConfig.model)）")
-                if !rows.isEmpty { return rows }
+            case .success(let extracted):
+                DiagLog.append("云端抽取成功 \(extracted.count) 笔（\(cloudConfig.model)）")
+                rows = extracted
             case .failure(let reason):
                 DiagLog.append("云端抽取失败：\(reason)")
             }
         }
 
-        #if canImport(FoundationModels)
-        if #available(iOS 26, *), isAvailable {
-            let smart = await extractWithModel(text: text, now: .now)
-            if !smart.isEmpty {
-                DiagLog.append("端侧模型抽取 \(smart.count) 笔")
-                return smart
+        // 端侧档：iOS 26 + Apple Intelligence
+        if rows.isEmpty {
+            #if canImport(FoundationModels)
+            if #available(iOS 26, *), isAvailable {
+                rows = await extractWithModel(text: text, now: .now)
+                if !rows.isEmpty {
+                    DiagLog.append("端侧模型抽取 \(rows.count) 笔")
+                } else {
+                    DiagLog.append("端侧模型无结果，回退规则解析")
+                }
             }
-            DiagLog.append("端侧模型无结果，回退规则解析")
+            #endif
         }
-        #endif
-        return PaymentTextParser.parseAll(text)
+
+        // 规则档
+        if rows.isEmpty {
+            rows = PaymentTextParser.parseAll(text)
+        }
+
+        // 渠道识别（版权安全：仅颜色 + 通用图标）
+        let channel = ChannelDetector.detect(text)
+        if channel != .unknown {
+            rows = rows.map { row in
+                var tagged = row
+                tagged.channel = channel
+                return tagged
+            }
+        }
+        return rows
     }
 
     #if canImport(FoundationModels)

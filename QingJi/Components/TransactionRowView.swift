@@ -17,6 +17,16 @@ struct TransactionRowView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+                if let channel = tx.channelInfo {
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(Color(hex: channel.colorHex))
+                            .frame(width: 5, height: 5)
+                        Text(channel.title)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Spacer()

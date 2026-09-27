@@ -35,6 +35,7 @@ struct ScreenshotImportView: View {
         var date: Date
         var counterparty: String
         var note: String
+        var channel: TxChannel?
         var category: Category?
         var account: Account?
         var warning: String
@@ -140,6 +141,20 @@ struct ScreenshotImportView: View {
             DatePicker("时间", selection: entry.date)
             TextField("收款方/商户", text: entry.counterparty)
             TextField("备注", text: entry.note)
+            if let channel = entry.wrappedValue.channel {
+                HStack {
+                    Text("渠道")
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(hex: channel.colorHex))
+                            .frame(width: 6, height: 6)
+                        Text(channel.title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             HStack {
                 Text("账户")
                 Spacer()
@@ -184,7 +199,12 @@ struct ScreenshotImportView: View {
     /// 保存：先过 F-14 防重闸门，再落库（来源 .ocr）
     private func save(_ entry: DraftEntry) {
         guard let cents = Money.cents(fromString: entry.amountText), cents > 0 else { return }
-        guard let account = entry.account ?? accounts.first(where: { !$0.isArchived }) else { return }
+
+        // 渠道 → 默认账户（文档 v1.4 渠道识别）
+        let channelAccount = entry.channel?.accountKind.flatMap { kind in
+            accounts.first { $0.kind == kind && !$0.isArchived }
+        }
+        guard let account = entry.account ?? channelAccount ?? accounts.first(where: { !$0.isArchived }) else { return }
 
         let match = DuplicateGuard.findDuplicate(of: entry.kind,
                                                  amountCents: cents,
@@ -267,6 +287,7 @@ struct ScreenshotImportView: View {
                           date: parsed.date ?? Date(),
                           counterparty: parsed.counterparty ?? "",
                           note: parsed.note ?? "",
+                          channel: parsed.channel,
                           category: nil,
                           account: accounts.first { !$0.isArchived },
                           warning: warning)

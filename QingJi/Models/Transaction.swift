@@ -53,6 +53,8 @@ final class Transaction {
     var source: String = TxSource.manual.rawValue
     /// 原价（分），0 表示无折扣信息（文档 F-16）
     var originalAmountCents: Int64 = 0
+    /// 消费渠道（TxChannel.rawValue；空 = 未识别，文档 v1.4 渠道识别）
+    var channel: String = ""
 
     @Relationship var account: Account? = nil
     @Relationship var toAccount: Account? = nil
@@ -64,6 +66,11 @@ final class Transaction {
     var txSource: TxSource { TxSource(rawValue: source) ?? .manual }
     /// 有折扣（原价大于实付）时为 true
     var hasDiscount: Bool { originalAmountCents > amountCents }
+    /// 渠道（未识别/未记录时为 nil）
+    var channelInfo: TxChannel? {
+        guard !channel.isEmpty else { return nil }
+        return TxChannel(rawValue: channel)
+    }
     /// 元（Decimal），仅供展示/图表
     var yuan: Decimal { Money.yuan(fromCents: amountCents) }
 
@@ -77,7 +84,8 @@ final class Transaction {
          recurringRuleID: UUID? = nil,
          externalID: String = "",
          source: TxSource = .manual,
-         originalAmountCents: Int64 = 0) {
+         originalAmountCents: Int64 = 0,
+         channel: TxChannel? = nil) {
         self.kind = kind.rawValue
         self.amountCents = amountCents
         self.date = date
@@ -89,6 +97,7 @@ final class Transaction {
         self.externalID = externalID
         self.source = source.rawValue
         self.originalAmountCents = originalAmountCents
+        self.channel = channel?.rawValue ?? ""
     }
 
     /// 行标题：分类名 / 转账 / 未分类

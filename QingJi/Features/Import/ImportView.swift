@@ -262,6 +262,7 @@ struct ImportView: View {
 
             let summary = [row.counterparty, row.product].filter { !$0.isEmpty }.joined(separator: " · ")
             let note = row.note.isEmpty ? summary : (summary.isEmpty ? row.note : "\(summary)（\(row.note)）")
+            let channel = ChannelDetector.detect(row.payMethod)
             context.insert(Transaction(kind: row.kind,
                                        amountCents: row.amountCents,
                                        date: row.date,
@@ -269,7 +270,8 @@ struct ImportView: View {
                                        category: nil,
                                        note: note,
                                        externalID: row.externalID,
-                                       source: .bill))
+                                       source: .bill,
+                                       channel: channel == .unknown ? nil : channel))
             created += 1
         }
         try? context.save()
