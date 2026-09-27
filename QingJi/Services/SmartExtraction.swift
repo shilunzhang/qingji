@@ -1,16 +1,21 @@
 import Foundation
+#if canImport(FoundationModels)
 import FoundationModels
+#endif
 import UIKit
 
 /// 语义增强抽取（文档 F-12/F-13 增强）：
 /// iOS 26 + Apple Intelligence 设备 → 端侧大模型结构化抽取（免费/离线/隐私）
 /// 其余情况 → 自动回退规则解析（findDate 标签优先 + parseAll）
+/// 注意：FoundationModels 仅存在于 Xcode 26+ SDK，用 canImport 保护以兼容旧工具链
 enum SmartExtractionService {
 
     static var isAvailable: Bool {
+        #if canImport(FoundationModels)
         if #available(iOS 26, *) {
             return SystemLanguageModel.default.availability == .available
         }
+        #endif
         return false
     }
 
@@ -19,6 +24,7 @@ enum SmartExtractionService {
         let text = await OCRService.recognizeText(in: image)
         guard !text.isEmpty else { return [] }
 
+        #if canImport(FoundationModels)
         if #available(iOS 26, *), isAvailable {
             let smart = await extractWithModel(text: text, now: .now)
             if !smart.isEmpty {
@@ -27,9 +33,11 @@ enum SmartExtractionService {
             }
             DiagLog.append("端侧模型无结果，回退规则解析")
         }
+        #endif
         return PaymentTextParser.parseAll(text)
     }
 
+    #if canImport(FoundationModels)
     @available(iOS 26, *)
     private static func extractWithModel(text: String, now: Date) async -> [ParsedPayment] {
         let clipped = String(text.prefix(2500))
@@ -49,6 +57,7 @@ enum SmartExtractionService {
             return []
         }
     }
+    #endif
 
     private static func instructions(now: Date) -> String {
         let formatter = DateFormatter()
@@ -82,6 +91,7 @@ enum SmartExtractionService {
     }
 }
 
+#if canImport(FoundationModels)
 @available(iOS 26, *)
 @Generable
 struct SmartTransaction {
@@ -103,3 +113,4 @@ struct SmartTransactionList {
     @Guide(description: "截图中识别出的交易记录列表，单笔详情页只有一个元素")
     var transactions: [SmartTransaction]
 }
+#endif
