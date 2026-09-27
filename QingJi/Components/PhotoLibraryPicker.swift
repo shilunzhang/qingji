@@ -33,8 +33,12 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            parent.dismiss()
-            guard !results.isEmpty else { return }
+            // 用 picker 自身 dismiss（Environment dismiss 在 Coordinator 持有的拷贝上会静默失效）
+            picker.dismiss(animated: true)
+            guard !results.isEmpty else {
+                parent.onPicked([])
+                return
+            }
             let providers = results.map(\.itemProvider)
 
             Task { @MainActor in
@@ -44,9 +48,8 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
                         images.append(image)
                     }
                 }
-                if !images.isEmpty {
-                    parent.onPicked(images)
-                }
+                // 无论识别结果如何都回调，避免流程卡死
+                parent.onPicked(images)
             }
         }
 

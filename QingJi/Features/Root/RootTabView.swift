@@ -176,25 +176,22 @@ struct RootTabView: View {
     private func menuTile(_ title: String, _ icon: String, _ colorHex: String,
                           action: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.easeOut(duration: 0.15)) { showAddMenu = false }
+            withAnimation(.spring(duration: 0.3)) { showAddMenu = false }
             action()
         } label: {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(Color(hex: colorHex))
-                    .frame(width: 52, height: 52)
-                    .background(Color(hex: colorHex).opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                Text(title)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+            Image(systemName: icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color(hex: colorHex))
+                .frame(width: 48, height: 48)
+                .background(Color(hex: colorHex).opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 13))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     // MARK: - 拍照入账流（F-15）：拍摄 → 识别 → 预填手动表单
