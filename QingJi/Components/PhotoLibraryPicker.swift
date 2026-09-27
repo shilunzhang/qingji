@@ -3,12 +3,15 @@ import PhotosUI
 import UIKit
 
 /// 系统相册选择器封装（文档 F-12/F-15）：多选图片，绝不涉及相机
+///
+/// 重要：delegate 里不要调用任何 dismiss——
+/// PHPickerViewController 嵌在 SwiftUI sheet 的层级里，
+/// 调用 dismiss 会向上传播关闭整个 sheet。
+/// 正确做法：选完后通过 onPicked 通知父级，由父级通过状态移除本视图。
 struct PhotoLibraryPicker: UIViewControllerRepresentable {
 
     var maxCount: Int = 5
     var onPicked: ([UIImage]) -> Void
-
-    @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()
@@ -33,12 +36,7 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            // 用 picker 自身 dismiss（Environment dismiss 在 Coordinator 持有的拷贝上会静默失效）
-            picker.dismiss(animated: true)
-            guard !results.isEmpty else {
-                parent.onPicked([])
-                return
-            }
+            // 不调用任何 dismiss——SwiftUI 会在父级移除本视图时自动清理
             let providers = results.map(\.itemProvider)
 
             Task { @MainActor in
@@ -48,7 +46,6 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
                         images.append(image)
                     }
                 }
-                // 无论识别结果如何都回调，避免流程卡死
                 parent.onPicked(images)
             }
         }
