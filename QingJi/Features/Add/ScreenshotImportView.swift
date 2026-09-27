@@ -55,7 +55,8 @@ struct ScreenshotImportView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(maxWidth: .infinity, vertical: 14)
+                        .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
                     }
                     if CameraPicker.isAvailable {
                         Button {
@@ -70,7 +71,8 @@ struct ScreenshotImportView: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
-                            .frame(maxWidth: .infinity, vertical: 14)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
                         }
                     }
                 }
