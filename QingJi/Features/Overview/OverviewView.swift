@@ -40,9 +40,8 @@ struct OverviewView: View {
                 }
             }
             .sheet(isPresented: $showScreenshot) {
-                NavigationStack {
-                    QuickCaptureView(source: .album)
-                }
+                // v1.4.3：选择器内嵌为 sheet 内容，取消一次关闭
+                QuickCaptureView(source: .album)
             }
         }
     }

@@ -55,17 +55,14 @@ struct RootTabView: View {
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .screenshotImport:
-                NavigationStack {
-                    QuickCaptureView(source: .album)
-                }
+                // v1.4.3：选择器内嵌为 sheet 内容（无内层 sheet，取消一次关闭）
+                QuickCaptureView(source: .album)
             case .albumScan:
                 NavigationStack {
                     AlbumScanView()
                 }
             case .cameraCapture:
-                NavigationStack {
-                    QuickCaptureView(source: .camera)
-                }
+                QuickCaptureView(source: .camera)
             case .manualAdd(let kind, let prefill):
                 // 修复A：取消/保存在 toolbar 中，必须包 NavigationStack 才能渲染
                 NavigationStack {

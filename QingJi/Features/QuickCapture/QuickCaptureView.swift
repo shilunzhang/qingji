@@ -3,7 +3,9 @@ import SwiftData
 import UIKit
 
 /// 截图/拍照入账（文档 F-12/F-15）
-/// 打开即弹相册/相机，无中间页面；取消则直接关闭
+/// v1.4.3：选择器直接内嵌为 sheet 内容（不再是 sheet 套 sheet）——
+/// 取消（×/下滑）只关闭一次，杜绝中间空白卡片与串行关闭延迟；
+/// 识别后原位切换为审核列表，全程同一个 sheet。
 struct QuickCaptureView: View {
     enum Source { case album, camera }
 
@@ -17,15 +19,13 @@ struct QuickCaptureView: View {
     @State private var entries: [DraftEntry] = []
     @State private var processing = false
     @State private var savedCount = 0
-    @State private var showPicker = false
     @State private var categoryTarget: CategoryTarget?
     @State private var pendingDuplicate: DuplicateMatch?
     @State private var confirmEntryID: DraftEntry.ID?
     @State private var duplicateBlockMessage: String?
-    // 修复C/E：空态与呈现竞争追踪
-    @State private var hasAttempted = false      // 已选过图片（无论是否识别出记录）
-    @State private var pickerAppeared = false    // 内层选择器确实弹出过
-    @State private var autoPresentFailed = false // 自动弹出失败的兜底标记
+    /// v1.4.3：picker 内嵌状态机
+    @State private var picking = true        // true = 显示选择器（初始态）
+    @State private var hasAttempted = false  // 已选过图（无论识别出几条）
 
     struct DraftEntry: Identifiable {
         let id = UUID()
@@ -53,47 +53,13 @@ struct QuickCaptureView: View {
                 reviewList
             } else if savedCount > 0 {
                 doneView
+            } else if picking {
+                pickerContent
             } else {
                 fallbackView
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        // 修复B：下拉滑动取消不会触发任何回调，onDismiss 是唯一的取消出口
-        .sheet(isPresented: $showPicker, onDismiss: handlePickerDismissed) {
-            Group {
-                if source == .camera && !CameraPicker.isAvailable {
-                    // 修复E：模拟器/无摄像头设备直接弹相册选择器，避免崩溃
-                    PhotoLibraryPicker(maxCount: 5) { images in
-                        showPicker = false
-                        if !images.isEmpty {
-                            handleImages(images)
-                        }
-                    }
-                } else if source == .album {
-                    PhotoLibraryPicker(maxCount: 5) { images in
-                        showPicker = false
-                        if !images.isEmpty {
-                            handleImages(images)
-                        }
-                        // 空选择：交给 onDismiss 统一关闭整页
-                    }
-                } else {
-                    CameraPicker(
-                        onImage: { image in
-                            showPicker = false
-                            handleImages([image])
-                        },
-                        onCancel: {
-                            // 取消：仅收回选择器，由 onDismiss 统一关闭整页
-                            // （避免在子 sheet 动画中同时 dismiss 父视图产生竞态）
-                            showPicker = false
-                        }
-                    )
-                }
-            }
-            .onAppear { pickerAppeared = true }
-            .onDisappear { pickerAppeared = false }
-        }
         .sheet(item: $categoryTarget) { target in
             CategoryPickerSheet(selected: nil, defaultKind: .expense) { picked in
                 if let index = entries.firstIndex(where: { $0.id == target.entryID }) {
@@ -107,25 +73,34 @@ struct QuickCaptureView: View {
             blockMessage: $duplicateBlockMessage,
             onConfirm: { confirmAndSave() }
         ))
-        .task {
-            // 修复E：等外层 sheet 完成呈现后再弹内层选择器，避免呈现竞争被系统丢弃
-            try? await Task.sleep(for: .milliseconds(450))
-            guard !Task.isCancelled else { return }
-            showPicker = true
-            // 兜底：若竞争导致选择器没弹出，给出手动入口，杜绝空白死页
-            try? await Task.sleep(for: .seconds(1))
-            if !pickerAppeared && !processing {
-                autoPresentFailed = true
-            }
-        }
     }
 
-    /// 选择器关闭后的统一出口：
-    /// 无识别结果、无保存、不在处理中 → 整页关闭，回到主页（不留残留页）
-    private func handlePickerDismissed() {
-        pickerAppeared = false
-        if entries.isEmpty && savedCount == 0 && !processing {
-            dismiss()
+    // MARK: - 内嵌选择器（sheet 内容本身）
+
+    /// 相机不可用（模拟器/无摄像头）自动降级为相册选择器
+    @ViewBuilder
+    private var pickerContent: some View {
+        if source == .camera && CameraPicker.isAvailable {
+            CameraPicker(
+                onImage: { image in
+                    handleImages([image])
+                },
+                onCancel: {
+                    // 取消：整个 sheet 一次关闭（无内层 sheet，无串行延迟）
+                    dismiss()
+                }
+            )
+            .ignoresSafeArea()
+        } else {
+            PhotoLibraryPicker(maxCount: 5) { images in
+                if images.isEmpty {
+                    // × 取消 / 未选任何图：一次关闭
+                    dismiss()
+                } else {
+                    handleImages(images)
+                }
+            }
+            .ignoresSafeArea(edges: .bottom)
         }
     }
 
@@ -215,6 +190,43 @@ struct QuickCaptureView: View {
         }
     }
 
+    private var doneView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "checkmark.circle").font(.system(size: 56)).foregroundStyle(Theme.income)
+            Text("已保存 \(savedCount) 笔").font(.title3.weight(.semibold))
+            Button("完成") { dismiss() }.buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemBackground))
+    }
+
+    // MARK: - 空态兜底
+
+    /// 选过图但识别 0 条：给出出口，杜绝死页
+    @ViewBuilder
+    private var fallbackView: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "text.viewfinder")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+            Text("未识别到账单记录").font(.headline)
+            Text("换一张支付成功页截图试试，或改用手动记账")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("重新选择") {
+                hasAttempted = false
+                picking = true
+            }
+            .buttonStyle(.borderedProminent)
+            Button("关闭") { dismiss() }
+                .buttonStyle(.bordered)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemBackground))
+    }
+
     // MARK: - v1.4.2 重复提示与左滑丢弃
 
     /// 左滑丢弃候选条目（从待确认列表移除，不入账）
@@ -236,71 +248,7 @@ struct QuickCaptureView: View {
                                             date: entry.date, in: history)
     }
 
-    private var doneView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle").font(.system(size: 56)).foregroundStyle(Theme.income)
-            Text("已保存 \(savedCount) 笔").font(.title3.weight(.semibold))
-            Button("完成") { dismiss() }.buttonStyle(.borderedProminent)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemBackground))
-    }
-
-    // MARK: - 空态兜底（修复C）
-
-    /// 需要给用户出口的状态：识别到 0 条 / 相机不可用 / 选择器没自动弹出。
-    /// 其余等待期保持空白（瞬时状态，选择器马上盖上来）。
-    @ViewBuilder
-    private var fallbackView: some View {
-        if needsFallback {
-            VStack(spacing: 14) {
-                Image(systemName: fallbackIcon)
-                    .font(.system(size: 44))
-                    .foregroundStyle(.secondary)
-                Text(fallbackTitle).font(.headline)
-                if hasAttempted && !cameraUnavailable {
-                    Text("换一张支付成功页截图试试，或改用手动记账")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                Button("重新选择") {
-                    hasAttempted = false
-                    autoPresentFailed = false
-                    showPicker = true
-                }
-                .buttonStyle(.borderedProminent)
-                Button("关闭") { dismiss() }
-                    .buttonStyle(.bordered)
-            }
-            .padding()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(uiColor: .systemBackground))
-        } else {
-            Color(uiColor: .systemBackground)
-                .ignoresSafeArea()
-        }
-    }
-
-    private var cameraUnavailable: Bool {
-        source == .camera && !CameraPicker.isAvailable
-    }
-
-    private var needsFallback: Bool {
-        hasAttempted || cameraUnavailable || autoPresentFailed
-    }
-
-    private var fallbackIcon: String {
-        if cameraUnavailable { return "video.slash" }
-        if autoPresentFailed { return "photo.on.rectangle" }
-        return "text.viewfinder"
-    }
-
-    private var fallbackTitle: String {
-        if cameraUnavailable { return "相机不可用，已切换为相册选择" }
-        if autoPresentFailed { return "没有自动打开选择器" }
-        return "未识别到账单记录"
-    }
+    // MARK: - 数据与保存
 
     private var activeAccounts: [Account] {
         accounts.filter { !$0.isArchived }
@@ -359,6 +307,7 @@ struct QuickCaptureView: View {
 
     private func handleImages(_ images: [UIImage]) {
         processing = true
+        picking = false
         Task { @MainActor in
             var drafts: [DraftEntry] = []
             for image in images {
@@ -367,7 +316,7 @@ struct QuickCaptureView: View {
                 }
             }
             entries.append(contentsOf: drafts)
-            hasAttempted = true   // 无论是否识别出记录，都标记已尝试（0 条时给兜底出口）
+            hasAttempted = true
             processing = false
         }
     }
