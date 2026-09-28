@@ -55,23 +55,26 @@ struct QuickCaptureView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showPicker, onDismiss: {
-            if entries.isEmpty && savedCount == 0 && !processing {
-                dismiss()
-            }
-        }) {
+        .sheet(isPresented: $showPicker) {
             if source == .album {
                 PhotoLibraryPicker(maxCount: 5) { images in
+                    showPicker = false
                     if !images.isEmpty {
                         handleImages(images)
+                    } else {
+                        dismiss()
                     }
                 }
             } else {
                 CameraPicker(
                     onImage: { image in
+                        showPicker = false
                         handleImages([image])
                     },
-                    onCancel: { }
+                    onCancel: {
+                        showPicker = false
+                        dismiss()
+                    }
                 )
             }
         }
