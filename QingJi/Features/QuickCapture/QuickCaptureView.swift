@@ -3,24 +3,21 @@ import SwiftData
 import UIKit
 
 /// 截图/拍照入账（文档 F-12/F-15）
-/// 流程：选图/拍照 → 自动识别 → 草稿卡确认 → 入账
-/// 每一步都有明确的用户反馈，不会静默失败
+/// 打开即弹相册/相机，无中间页面；取消则直接关闭
 struct QuickCaptureView: View {
     enum Source { case album, camera }
-    enum Stage { case picking, review, done }
 
     let source: Source
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Category.sortOrder) private var categories: [Category]
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
 
-    @State private var stage: Stage = .picking
     @State private var entries: [DraftEntry] = []
     @State private var processing = false
-    @State private var showLibraryPicker = false
-    @State private var showCamera = false
     @State private var savedCount = 0
+    @State private var showPicker = false
     @State private var categoryTarget: CategoryTarget?
     @State private var pendingDuplicate: DuplicateMatch?
     @State private var confirmEntryID: DraftEntry.ID?
@@ -45,36 +42,37 @@ struct QuickCaptureView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(uiColor: .systemBackground).ignoresSafeArea()
-
-                if processing {
-                    processingView
-                } else {
-                    switch stage {
-                    case .picking:
-                        pickingView
-                    case .review:
-                        reviewListView
-                    case .done:
-                        doneView
+        Group {
+            if processing {
+                processingView
+            } else if !entries.isEmpty {
+                reviewList
+            } else if savedCount > 0 {
+                doneView
+            } else {
+                Color(uiColor: .systemBackground)
+                    .ignoresSafeArea()
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showPicker, onDismiss: {
+            if entries.isEmpty && savedCount == 0 && !processing {
+                dismiss()
+            }
+        }) {
+            if source == .album {
+                PhotoLibraryPicker(maxCount: 5) { images in
+                    if !images.isEmpty {
+                        handleImages(images)
                     }
                 }
-            }
-        }
-        .navigationTitle(navigationTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showLibraryPicker) {
-            PhotoLibraryPicker(maxCount: 5) { images in
-                handleImages(images)
-            }
-        }
-        .sheet(isPresented: $showCamera) {
-            CameraPicker(onImage: { image in
-                handleImages([image])
-            }, onCancel: { })
-                handleImages([image])
+            } else {
+                CameraPicker(
+                    onImage: { image in
+                        handleImages([image])
+                    },
+                    onCancel: { }
+                )
             }
         }
         .sheet(item: $categoryTarget) { target in
@@ -90,77 +88,22 @@ struct QuickCaptureView: View {
             blockMessage: $duplicateBlockMessage,
             onConfirm: { confirmAndSave() }
         ))
-    }
-
-    private var navigationTitle: String {
-        source == .camera ? "拍照入账" : "截图入账"
-    }
-
-    // MARK: - 选图阶段
-
-    @ViewBuilder
-    private var pickingView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-
-            Text(source == .album
-                 ? "打开相册选择支付/账单截图\n（最多 5 张）"
-                 : "打开相机拍摄支付页面")
-
-            Button {
-                if source == .album {
-                    showLibraryPicker = true
-                } else {
-                    showCamera = true
-                }
-            } label: {
-                Label(source == .album ? "打开相册" : "打开相机",
-                      systemImage: source == .album ? "photo.badge.plus" : "camera")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.horizontal, 32)
+        .task {
+            showPicker = true
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-
-    // MARK: - 处理中
 
     private var processingView: some View {
         VStack(spacing: 12) {
-            ProgressView()
-                .scaleEffect(1.5)
-            Text("正在识别截图内容…")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            ProgressView().scaleEffect(1.5)
+            Text("正在识别截图内容…").font(.subheadline).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemBackground))
     }
 
-    // MARK: - 确认阶段（草稿卡）
-
-    @ViewBuilder
-    private var reviewListView: some View {
+    private var reviewList: some View {
         List {
-            if entries.isEmpty {
-                Section {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.title)
-                            .foregroundStyle(.orange)
-                        Text("未能从截图中识别出金额")
-                            .font(.subheadline)
-                        Text("请截图更清晰的支付成功页面后重试")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                }
-            }
             ForEach($entries) { $entry in
                 entryCard($entry)
             }
@@ -168,6 +111,11 @@ struct QuickCaptureView: View {
                 Section {
                     Label("已保存 \(savedCount) 笔", systemImage: "checkmark.seal")
                         .foregroundStyle(Theme.income)
+                }
+            }
+            if entries.isEmpty && savedCount > 0 {
+                Section {
+                    Button("完成") { dismiss() }.frame(maxWidth: .infinity)
                 }
             }
         }
@@ -179,24 +127,17 @@ struct QuickCaptureView: View {
                 .keyboardType(.decimalPad)
                 .font(.title3.weight(.bold))
                 .monospacedDigit()
-
             DatePicker("时间", selection: entry.date)
-
             TextField("收款方/商户", text: entry.counterparty)
-
             HStack {
                 Text("账户")
                 Spacer()
                 Menu(entry.wrappedValue.account?.name ?? "请选择") {
                     ForEach(activeAccounts) { account in
-                        Button(account.name) {
-                            entry.wrappedValue.account = account
-                        }
+                        Button(account.name) { entry.wrappedValue.account = account }
                     }
                 }
-                .foregroundStyle(.primary)
             }
-
             HStack {
                 Text("分类")
                 Spacer()
@@ -205,42 +146,28 @@ struct QuickCaptureView: View {
                 }
                 .foregroundStyle(.secondary)
             }
-
             if !entry.wrappedValue.warning.isEmpty {
                 Label(entry.wrappedValue.warning, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(Theme.alert)
+                    .font(.caption).foregroundStyle(Theme.alert)
             }
-
             Button {
                 save(entry.wrappedValue)
             } label: {
-                Text("确认入账")
-                    .frame(maxWidth: .infinity)
-                    .fontWeight(.semibold)
+                Text("确认入账").frame(maxWidth: .infinity).fontWeight(.semibold)
             }
             .disabled(!canSave(entry.wrappedValue))
         }
     }
 
-    // MARK: - 完成
-
     private var doneView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 56))
-                .foregroundStyle(Theme.income)
-            Text("本批处理完成")
-                .font(.title3.weight(.semibold))
-            Button("继续识别") {
-                stage = .picking
-            }
-            .buttonStyle(.bordered)
+            Image(systemName: "checkmark.circle").font(.system(size: 56)).foregroundStyle(Theme.income)
+            Text("已保存 \(savedCount) 笔").font(.title3.weight(.semibold))
+            Button("完成") { dismiss() }.buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemBackground))
     }
-
-    // MARK: - 数据
 
     private var activeAccounts: [Account] {
         accounts.filter { !$0.isArchived }
@@ -265,19 +192,11 @@ struct QuickCaptureView: View {
     private func save(_ entry: DraftEntry) {
         guard let cents = Money.cents(fromString: entry.amountText), cents > 0 else { return }
         guard let account = resolveAccount(for: entry) else { return }
-
-        let match = DuplicateGuard.findDuplicate(of: entry.kind,
-                                                 amountCents: cents,
-                                                 date: entry.date,
-                                                 in: history)
+        let match = DuplicateGuard.findDuplicate(of: entry.kind, amountCents: cents, date: entry.date, in: history)
         switch DuplicateGuard.manualDecision(for: match) {
-        case .allow:
-            commit(entry, cents: cents, account: account)
-        case .confirm(let duplicated):
-            pendingDuplicate = duplicated
-            confirmEntryID = entry.id
-        case .block(let duplicated):
-            duplicateBlockMessage = "已存在 \(duplicated.summary)。"
+        case .allow: commit(entry, cents: cents, account: account)
+        case .confirm(let d): pendingDuplicate = d; confirmEntryID = entry.id
+        case .block(let d): duplicateBlockMessage = "已存在 \(d.summary)。"
         }
     }
 
@@ -292,55 +211,4 @@ struct QuickCaptureView: View {
     private func commit(_ entry: DraftEntry, cents: Int64, account: Account) {
         var entry = entry
         if entry.category == nil, !entry.counterparty.isEmpty {
-            entry.category = CategoryPredictor.category(forMerchant: entry.counterparty, in: history)
-        }
-
-        let noteText = entry.note.isEmpty ? entry.counterparty : entry.note
-        let tx = Transaction(kind: entry.kind,
-                             amountCents: cents,
-                             date: entry.date,
-                             account: account,
-                             category: entry.category,
-                             note: noteText,
-                             channel: entry.channel)
-        context.insert(tx)
-        try? context.save()
-        AutoPostStore.shared.recordPosted(txID: tx.id, kind: entry.kind,
-                                          amountCents: cents, date: entry.date,
-                                          note: noteText)
-        savedCount += 1
-        entries.removeAll { $0.id == entry.id }
-    }
-
-    // MARK: - 图片处理
-
-    private func handleImages(_ images: [UIImage]) {
-        processing = true
-        Task { @MainActor in
-            var drafts: [DraftEntry] = []
-            for image in images {
-                for row in await SmartExtractionService.extractRows(from: image) {
-                    drafts.append(makeEntry(from: row))
-                }
-            }
-            entries.append(contentsOf: drafts)
-            processing = false
-        }
-    }
-
-    private func makeEntry(from row: PaymentTextParser.ParsedPayment) -> DraftEntry {
-        var warning = ""
-        if (row.amountCents ?? 0) <= 0 {
-            warning = "未识别出金额，请手动补填"
-        }
-        return DraftEntry(kind: row.kind ?? .expense,
-                          amountText: row.amountCents.map { Money.inputString(fromCents: $0) } ?? "",
-                          date: row.date ?? Date(),
-                          counterparty: row.counterparty ?? "",
-                          note: row.note ?? "",
-                          channel: row.channel,
-                          category: nil,
-                          account: activeAccounts.first,
-                          warning: warning)
-    }
-}
+            entry.category = CategoryPredictor.category(forMerchant: entry.counterparty, in
