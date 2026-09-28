@@ -10,6 +10,8 @@ struct OverviewView: View {
 
     @State private var monthAnchor = Date()
     @State private var editing: Transaction?
+    /// v1.4.8：下拉扫描后弹出相册批量确认页
+    @State private var showAlbumScan = false
 
     var body: some View {
         NavigationStack {
@@ -25,6 +27,20 @@ struct OverviewView: View {
             // v1.4.7：去除页面大标题（底部 Tab 已标明页面），导航栏整体隐藏；
             // 原右上角相机入口与 FAB「截图入账」功能重复，一并移除
             .toolbar(.hidden, for: .navigationBar)
+            // v1.4.8：明细页下拉 → 直接批量扫描相册新截图（替代 FAB 批量扫描入口）：
+            // 首次下拉请求照片权限；扫到新草稿才弹相册扫描确认页，无新内容则静默收起
+            .refreshable {
+                if !PhotoScanService.isAuthorized {
+                    _ = await PhotoScanService.requestAccess()
+                }
+                await AlbumScanModel.shared.scan()
+                if !AlbumScanModel.shared.drafts.isEmpty {
+                    showAlbumScan = true
+                }
+            }
+            .sheet(isPresented: $showAlbumScan) {
+                NavigationStack { AlbumScanView() }
+            }
             .sheet(item: $editing) { tx in
                 // 修复A：编辑页取消/保存在 toolbar 中，必须包 NavigationStack
                 NavigationStack {

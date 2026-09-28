@@ -15,7 +15,8 @@ struct FloatingAddButton: View {
 
     @State private var isExpanded = false
 
-    // 弧形半径 30° 均匀分布（180°/150°/120°/90°）
+    // v1.4.8：批量扫描移至明细页下拉触发，剩 3 个入口；
+    // 弧线不占 180° 平左位，150°/120°/90° 均匀 30° 分布（左上 → 正上）
     private let radius: CGFloat = 116
     private let mainSize: CGFloat = 58
     private let arcSize: CGFloat = 48
@@ -24,8 +25,7 @@ struct FloatingAddButton: View {
 
     private var arcItems: [(icon: String, hex: String, angle: Double, sheet: AddSheet)] {
         [
-            ("photo.on.rectangle", "4A90D9", 180, .screenshotImport),
-            ("doc.text.magnifyingglass", "8E7CF8", 150, .albumScan),
+            ("photo.on.rectangle", "4A90D9", 150, .screenshotImport),
             ("camera", "FF8A3D", 120, .cameraCapture),
             ("pencil.line", "4CAF50", 90, .manualAdd(kind: .expense, prefill: nil)),
         ]
