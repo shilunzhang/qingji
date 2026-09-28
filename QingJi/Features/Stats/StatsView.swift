@@ -23,8 +23,8 @@ struct StatsView: View {
                 .padding(16)
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("图表")
-            .navigationBarTitleDisplayMode(.inline)
+            // v1.4.7：去除页面大标题，导航栏隐藏
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 

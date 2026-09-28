@@ -144,7 +144,8 @@ struct SettingsView: View {
                     Text("数据存储在本机与你的 iCloud，开发者无法读取")
                 }
             }
-            .navigationTitle("我的")
+            // v1.4.7：去除页面大标题，导航栏隐藏（推入的二级页面标题保留）
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear { appLock.refreshAvailability() }
             .sheet(isPresented: $showSetupGuide) {
                 NavigationStack { SetupGuideView() }

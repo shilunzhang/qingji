@@ -10,7 +10,6 @@ struct OverviewView: View {
 
     @State private var monthAnchor = Date()
     @State private var editing: Transaction?
-    @State private var showScreenshot = false
 
     var body: some View {
         NavigationStack {
@@ -23,26 +22,14 @@ struct OverviewView: View {
             .background(Color(uiColor: .systemBackground))
             // v1.4.6：底部给浮动＋号让位，最后一行不被遮挡
             .contentMargins(.bottom, 88)
-            .navigationTitle("明细")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showScreenshot = true
-                    } label: {
-                        Image(systemName: "camera.viewfinder")
-                    }
-                    .accessibilityLabel("截图记账")
-                }
-            }
+            // v1.4.7：去除页面大标题（底部 Tab 已标明页面），导航栏整体隐藏；
+            // 原右上角相机入口与 FAB「截图入账」功能重复，一并移除
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $editing) { tx in
                 // 修复A：编辑页取消/保存在 toolbar 中，必须包 NavigationStack
                 NavigationStack {
                     AddTransactionView(mode: .edit(tx))
                 }
-            }
-            .sheet(isPresented: $showScreenshot) {
-                // v1.4.3：选择器内嵌为 sheet 内容，取消一次关闭
-                QuickCaptureView(source: .album)
             }
         }
     }

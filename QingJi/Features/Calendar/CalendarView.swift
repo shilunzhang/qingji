@@ -21,16 +21,8 @@ struct CalendarView: View {
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("日历")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(showYear ? "月" : "年") {
-                        showYear.toggle()
-                    }
-                    .font(.subheadline.weight(.medium))
-                }
-            }
+            // v1.4.7：去除页面大标题，导航栏隐藏；「年/月」切换挪进内容区
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $editing) { tx in
                 // 修复A：编辑页取消/保存在 toolbar 中，必须包 NavigationStack
                 NavigationStack {
@@ -82,6 +74,9 @@ struct CalendarView: View {
                         onPrev: { shiftMonth(-1) },
                         onNext: { shiftMonth(1) }
                     )
+                    .overlay(alignment: .trailing) {
+                        yearMonthToggle
+                    }
                     weekdayRow
                     grid
                 }
@@ -91,6 +86,21 @@ struct CalendarView: View {
             }
             .padding(16)
         }
+    }
+
+    /// v1.4.7：原导航栏「年/月」切换（月份卡右上角胶囊）
+    private var yearMonthToggle: some View {
+        Button {
+            showYear.toggle()
+        } label: {
+            Text(showYear ? "月" : "年")
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color(uiColor: .tertiarySystemFill)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(showYear ? "切换到月视图" : "切换到年视图")
     }
 
     private func shiftMonth(_ delta: Int) {
@@ -232,6 +242,9 @@ struct CalendarView: View {
                     onPrev: { monthAnchor = DateHelpers.shift(monthAnchor, by: -1, of: .year) },
                     onNext: { monthAnchor = DateHelpers.shift(monthAnchor, by: 1, of: .year) }
                 )
+                .overlay(alignment: .trailing) {
+                    yearMonthToggle
+                }
                 .padding(.vertical, 4)
             }
             ForEach(1...12, id: \.self) { month in
