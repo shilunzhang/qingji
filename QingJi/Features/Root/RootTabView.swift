@@ -67,7 +67,10 @@ struct RootTabView: View {
                     QuickCaptureView(source: .camera)
                 }
             case .manualAdd(let kind, let prefill):
-                AddTransactionView(mode: .create(kind, prefill))
+                // 修复A：取消/保存在 toolbar 中，必须包 NavigationStack 才能渲染
+                NavigationStack {
+                    AddTransactionView(mode: .create(kind, prefill))
+                }
             }
         }
         .alert("识别提示", isPresented: Binding(
@@ -78,12 +81,11 @@ struct RootTabView: View {
         } message: {
             Text(captureHint ?? "")
         }
-        .overlay(alignment: .bottomTrailing) {
+        .overlay {
+            // FloatingAddButton 自带全屏收起捕获层与边距，此处不再加 padding
             FloatingAddButton(onSelect: { sheet in
                 activeSheet = sheet
             })
-            .padding(.trailing, 18)
-            .padding(.bottom, 90)
         }
         .overlay {
             if appLock.isLocked {

@@ -34,7 +34,10 @@ struct OverviewView: View {
                 }
             }
             .sheet(item: $editing) { tx in
-                AddTransactionView(mode: .edit(tx))
+                // 修复A：编辑页取消/保存在 toolbar 中，必须包 NavigationStack
+                NavigationStack {
+                    AddTransactionView(mode: .edit(tx))
+                }
             }
             .sheet(isPresented: $showScreenshot) {
                 NavigationStack {
