@@ -165,4 +165,94 @@ final class PaymentTextParserTests: XCTestCase {
         XCTAssertEqual(comps.hour, 8)
         XCTAssertEqual(comps.minute, 5)
     }
+
+    // MARK: - v1.4.4 相对时间解析（昨天 21:30 / 20:30）
+
+    /// 固定"现在"：2026-09-26 10:00（周六）
+    private var fixedNow: Date {
+        var comps = DateComponents()
+        comps.year = 2026; comps.month = 9; comps.day = 26; comps.hour = 10; comps.minute = 0
+        return Calendar.current.date(from: comps)!
+    }
+
+    private func comps(of date: Date?) -> DateComponents {
+        Calendar.current.dateComponents([.month, .day, .hour, .minute], from: date ?? Date())
+    }
+
+    func testRelativeDayWordLabeledTime() {
+        // 交易时间：昨天 21:30 → 2026-09-25 21:30
+        let parsed = PaymentTextParser.parse("支付成功\n付款金额 ¥35.00\n交易时间 昨天 21:30",
+                                             now: fixedNow)
+        let c = comps(of: parsed.date)
+        XCTAssertEqual([c.month, c.day, c.hour, c.minute], [9, 25, 21, 30])
+    }
+
+    func testBareTimeTodayPast() {
+        // 交易时间：08:30（今天 10:00 之前）→ 今天 08:30
+        let parsed = PaymentTextParser.parse("交易时间 08:30", now: fixedNow)
+        let c = comps(of: parsed.date)
+        XCTAssertEqual([c.day, c.hour, c.minute], [26, 8, 30])
+    }
+
+    func testBareTimeFutureMeansYesterday() {
+        // 交易时间：20:30（晚于当前 10:00，今天不可能出现未来时刻）→ 昨天 20:30
+        let parsed = PaymentTextParser.parse("交易时间 20:30", now: fixedNow)
+        let c = comps(of: parsed.date)
+        XCTAssertEqual([c.day, c.hour, c.minute], [25, 20, 30])
+    }
+
+    func testFullDateTakesPriorityOverRelative() {
+        // 全日期优先于相对时间
+        let text = "交易时间 2026-09-20 12:00\n创建时间 昨天 21:30"
+        let parsed = PaymentTextParser.parse(text, now: fixedNow)
+        let c = comps(of: parsed.date)
+        XCTAssertEqual([c.day, c.hour], [20, 12])
+    }
+
+    func testBillListRelativeHeaders() {
+        // 账单列表：相对分组头 + 独立时间行
+        let text = """
+        昨天 21:35
+        麦当劳 -¥35.00
+        今天
+        地铁 +¥6.00
+        """
+        let rows = PaymentTextParser.parseAll(text, now: fixedNow)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].counterparty, "麦当劳")
+        let c0 = comps(of: rows[0].date)
+        XCTAssertEqual([c0.day, c0.hour, c0.minute], [25, 21, 35])
+        XCTAssertEqual(rows[0].kind, .expense)
+        // 「今天」分组头 → 今天（12:00 粒度）
+        XCTAssertEqual(comps(of: rows[1].date).day, 26)
+        XCTAssertEqual(rows[1].kind, .income)
+    }
+
+    func testInlineDayWordTimeStrippedFromName() {
+        // 行内相对时间：从商户名中剥离
+        let rows = PaymentTextParser.parseAll("昨天 21:35 麦当劳 -¥35.00", now: fixedNow)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].counterparty, "麦当劳")
+        let c = comps(of: rows[0].date)
+        XCTAssertEqual([c.day, c.hour, c.minute], [25, 21, 35])
+    }
+
+    func testLLMRelativeTimeFallback() {
+        // LLM 输出相对时间 → SmartExtractionService.parseTime 兜底
+        let yesterday = SmartExtractionService.parseTime("昨天 21:30", fallback: fixedNow)
+        let c1 = comps(of: yesterday)
+        XCTAssertEqual([c1.day, c1.hour, c1.minute], [25, 21, 30])
+
+        let today = SmartExtractionService.parseTime("20:30", fallback: fixedNow)
+        let c2 = comps(of: today)
+        XCTAssertEqual([c2.day, c2.hour, c2.minute], [25, 20, 30])
+
+        // 标准格式不受影响
+        let standard = SmartExtractionService.parseTime("2026-09-01 09:05", fallback: fixedNow)
+        let c3 = comps(of: standard)
+        XCTAssertEqual([c3.day, c3.hour, c3.minute], [1, 9, 5])
+
+        // 完全无法解析 → 回退 fallback
+        XCTAssertEqual(SmartExtractionService.parseTime("不认识的时间", fallback: fixedNow), fixedNow)
+    }
 }

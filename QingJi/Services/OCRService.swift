@@ -97,24 +97,76 @@ enum PaymentTextParser {
     private static let counterpartyPattern =
         #"(?:收款方|付款给|收款商户|商户全称|商户名称|对方名称|对方)[:：]?\s*(.+)"#
 
-    static func parse(_ text: String, calendar: Calendar = .current) -> ParsedPayment {
+    // MARK: - v1.4.4 相对时间（昨天 21:30 / 20:30）
+
+    /// 相对日词 → 相对今天的天数偏移
+    private static let relativeDayOffsets: [String: Int] = ["今天": 0, "昨天": -1, "前天": -2, "大前天": -3]
+    /// 相对/裸时间片段：可选日词 + HH:mm(:ss)
+    private static let relativeTimePattern = #"(今天|昨天|前天|大前天)?\s*([0-9]{1,2}):([0-9]{2})(?::[0-9]{2})?"#
+    /// 带日词的时间（行内出现也认，如「昨天 21:35 麦当劳 -¥35.00」）
+    private static let dayWordTimePattern = #"(今天|昨天|前天|大前天)\s*([0-9]{1,2}):([0-9]{2})(?::[0-9]{2})?"#
+
+    /// 相对时间 → 标准日期。
+    /// 裸时间（无日词）按今天处理；若时刻晚于当前时刻（今天不会出现未来时刻）则实为昨天。
+    static func relativeDate(dayWord: String?, hour: Int, minute: Int,
+                             calendar: Calendar = .current, now: Date = .now) -> Date? {
+        guard (0...23).contains(hour), (0...59).contains(minute) else { return nil }
+        var day = calendar.startOfDay(for: now)
+        if let word = dayWord {
+            guard let offset = relativeDayOffsets[word] else { return nil }
+            if offset != 0 {
+                day = calendar.date(byAdding: .day, value: offset, to: day) ?? day
+            }
+        } else {
+            let nowMinutes = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
+            if hour * 60 + minute > nowMinutes {
+                day = calendar.date(byAdding: .day, value: -1, to: day) ?? day
+            }
+        }
+        var comps = calendar.dateComponents([.year, .month, .day], from: day)
+        comps.hour = hour
+        comps.minute = minute
+        return calendar.date(from: comps)
+    }
+
+    /// 整段文本就是时间（如 LLM 输出「昨天 21:30」「20:30」）→ 标准日期；无法解析返回 nil
+    static func relativeDate(fromTimeText string: String,
+                             calendar: Calendar = .current, now: Date = .now) -> Date? {
+        let trimmed = string.trimmingCharacters(in: .whitespaces)
+        guard let regex = try? NSRegularExpression(pattern: "^(?:(今天|昨天|前天|大前天)\\s*)?([0-9]{1,2}):([0-9]{2})(?::[0-9]{2})?$"),
+              let match = regex.firstMatch(in: trimmed, range: NSRange(location: 0, length: (trimmed as NSString).length)) else {
+            return nil
+        }
+        let ns = trimmed as NSString
+        func sub(_ i: Int) -> String? {
+            let r = match.range(at: i)
+            guard r.location != NSNotFound else { return nil }
+            return ns.substring(with: r)
+        }
+        guard let hour = sub(2).flatMap(Int.init),
+              let minute = sub(3).flatMap(Int.init) else { return nil }
+        return relativeDate(dayWord: sub(1), hour: hour, minute: minute,
+                            calendar: calendar, now: now)
+    }
+
+    static func parse(_ text: String, calendar: Calendar = .current, now: Date = .now) -> ParsedPayment {
         let lines = text.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         var result = ParsedPayment()
         result.amountCents = findAmount(in: lines)
-        result.date = findDate(in: text, calendar: calendar)
+        result.date = findDate(in: text, calendar: calendar, now: now)
         result.counterparty = findCounterparty(in: lines)
         return result
     }
 
     /// 多笔解析（文档 F-13 增强）：账单列表页一行一笔，日期行为分组头；
     /// 单笔详情页自动回落到 parse()。行格式：「瑞幸咖啡 -¥19.90」「工资到账 +¥3000.00」
-    static func parseAll(_ text: String, calendar: Calendar = .current) -> [ParsedPayment] {
-        let rows = extractSignedRows(text, calendar: calendar)
+    static func parseAll(_ text: String, calendar: Calendar = .current, now: Date = .now) -> [ParsedPayment] {
+        let rows = extractSignedRows(text, calendar: calendar, now: now)
         if rows.count >= 2 { return rows }
 
-        let single = parse(text, calendar: calendar)
+        let single = parse(text, calendar: calendar, now: now)
         if let cents = single.amountCents {
             var result = single
             if result.kind == nil { result.kind = .expense }
@@ -124,7 +176,7 @@ enum PaymentTextParser {
     }
 
     /// 逐行提取带 +/- 方向的金额行
-    static func extractSignedRows(_ text: String, calendar: Calendar = .current) -> [ParsedPayment] {
+    static func extractSignedRows(_ text: String, calendar: Calendar = .current, now: Date = .now) -> [ParsedPayment] {
         let skipKeywords = ["合计", "余额", "退款", "手续费"]
         let signedPattern = "([+-])\\s*[¥￥]?\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)"
         guard let signedRegex = try? NSRegularExpression(pattern: signedPattern) else { return [] }
@@ -133,15 +185,24 @@ enum PaymentTextParser {
         var lastDate: Date?
 
         for rawLine in text.components(separatedBy: .newlines) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            var line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty else { continue }
 
-            // 日期分组头（如「9月26日」「2026-09-26」）→ 记录并跳过
-            if let headerDate = dateHeader(line, calendar: calendar) {
+            // 日期分组头（如「9月26日」「2026-09-26」「昨天」「昨天 21:30」「21:30」）→ 记录并跳过
+            if let headerDate = dateHeader(line, calendar: calendar, now: now) {
                 lastDate = headerDate
                 continue
             }
             if skipKeywords.contains(where: line.contains) { continue }
+
+            // v1.4.4 行内相对时间（如「昨天 21:35 麦当劳 -¥35.00」）：
+            // 优先于分组头日期，并从行文本中剥离时间片段，避免污染商户名
+            var rowDate = lastDate
+            if let inline = inlineDayWordTime(line, calendar: calendar, now: now) {
+                rowDate = inline.date
+                line = (line as NSString).replacingCharacters(
+                    in: inline.range, with: "").trimmingCharacters(in: .whitespaces)
+            }
 
             let ns = line as NSString
             let range = NSRange(location: 0, length: ns.length)
@@ -163,18 +224,61 @@ enum PaymentTextParser {
             if name.count < 2 { name = "账单交易" }
 
             results.append(ParsedPayment(amountCents: cents,
-                                         date: lastDate,
+                                         date: rowDate,
                                          counterparty: name,
                                          kind: sign == "+" ? .income : .expense))
         }
         return results
     }
 
+    /// 行内带日词时间的命中结果（日期 + 在行中的范围）
+    private static func inlineDayWordTime(_ line: String,
+                                          calendar: Calendar, now: Date) -> (date: Date, range: NSRange)? {
+        guard let regex = try? NSRegularExpression(pattern: dayWordTimePattern) else { return nil }
+        let ns = line as NSString
+        guard let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)),
+              match.range(at: 1).location != NSNotFound,
+              let hour = (match.range(at: 2).location != NSNotFound ? ns.substring(with: match.range(at: 2)) : nil).flatMap(Int.init),
+              let minute = (match.range(at: 3).location != NSNotFound ? ns.substring(with: match.range(at: 3)) : nil).flatMap(Int.init),
+              let date = relativeDate(dayWord: ns.substring(with: match.range(at: 1)),
+                                      hour: hour, minute: minute,
+                                      calendar: calendar, now: now) else { return nil }
+        return (date, match.range)
+    }
+
     /// 日期分组头：「9月26日」「2026年9月26日」「2026-09-26」
-    private static func dateHeader(_ line: String, calendar: Calendar) -> Date? {
+    /// v1.4.4 新增：「昨天」「昨天 21:30」「21:30」（账单列表的相对分组/行时间）
+    private static func dateHeader(_ line: String, calendar: Calendar, now: Date = .now) -> Date? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         let ns = trimmed as NSString
         let range = NSRange(location: 0, length: ns.length)
+
+        // 相对日 + 可选时刻（「昨天 21:30」「21:30」）；裸时刻按今天处理，晚于当前则实为昨天
+        if let regex = try? NSRegularExpression(pattern: "^(?:(今天|昨天|前天|大前天)\\s*)?([0-9]{1,2}):([0-9]{2})(?::[0-9]{2})?$"),
+           let match = regex.firstMatch(in: trimmed, range: range) {
+            func sub(_ i: Int) -> String? {
+                let r = match.range(at: i)
+                guard r.location != NSNotFound else { return nil }
+                return ns.substring(with: r)
+            }
+            if let hour = sub(2).flatMap(Int.init),
+               let minute = sub(3).flatMap(Int.init),
+               let date = relativeDate(dayWord: sub(1), hour: hour, minute: minute,
+                                       calendar: calendar, now: now) {
+                return date
+            }
+            return nil
+        }
+
+        // 纯相对日词分组头（「昨天」）→ 该日 12:00（与其他分组头粒度一致）
+        if ["今天", "昨天", "前天", "大前天"].contains(trimmed) {
+            let offset = relativeDayOffsets[trimmed] ?? 0
+            var comps = calendar.dateComponents([.year, .month, .day], from: calendar.startOfDay(for: now))
+            comps.hour = 12
+            let day = offset == 0 ? calendar.date(from: comps)
+                                  : calendar.date(byAdding: .day, value: offset, to: calendar.date(from: comps) ?? now)
+            return day
+        }
 
         let cnPattern = "^(?:([0-9]{4})年)?([0-9]{1,2})月([0-9]{1,2})日?$"
         if let regex = try? NSRegularExpression(pattern: cnPattern),
@@ -261,7 +365,7 @@ enum PaymentTextParser {
 
     // MARK: - 日期
 
-    static func findDate(in text: String, calendar: Calendar = .current) -> Date? {
+    static func findDate(in text: String, calendar: Calendar = .current, now: Date = .now) -> Date? {
         let timePart = #"(?:[0-9]{4}[-/年])?[0-9]{1,2}[-/月][0-9]{1,2}日?\s*[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?"#
         // 第一优先：付款/交易/到账等确定性时间标签（正则交替按文本位置取最早，
         // 因此「下单时间」必须单独放第二轮，否则会抢在前面的下单时间）
@@ -269,12 +373,50 @@ enum PaymentTextParser {
         if let date = dateFromCapture(strongPattern, groupIndex: 1, text: text, calendar: calendar) {
             return date
         }
+        // v1.4.4 第一优先 B：强标签 + 相对/裸时间（交易时间: 昨天 21:30 / 交易时间: 20:30）
+        let strongRelPattern = #"(?:交易时间|付款时间|支付时间|到账时间|收款时间|成功时间)\s*[:：]?\s*"# + relativeTimePattern
+        if let date = relativeDateFromCapture(strongRelPattern, text: text,
+                                              calendar: calendar, now: now, requireDayWord: false) {
+            return date
+        }
         // 第二优先：下单时间/订单时间/日期
         let weakPattern = #"(?:下单时间|订单时间|日期)\s*[:：]?\s*("# + timePart + #")"#
         if let date = dateFromCapture(weakPattern, groupIndex: 1, text: text, calendar: calendar) {
             return date
         }
-        return dateFromCapture(datePattern, groupIndex: 0, text: text, calendar: calendar)
+        // v1.4.4 第二优先 B：弱标签 + 相对/裸时间
+        let weakRelPattern = #"(?:下单时间|订单时间|日期)\s*[:：]?\s*"# + relativeTimePattern
+        if let date = relativeDateFromCapture(weakRelPattern, text: text,
+                                              calendar: calendar, now: now, requireDayWord: false) {
+            return date
+        }
+        if let date = dateFromCapture(datePattern, groupIndex: 0, text: text, calendar: calendar) {
+            return date
+        }
+        // v1.4.4 兜底：任意位置的带日词时间（「昨天 21:35」）；
+        // 裸 HH:mm 无标签时不认，防止把无关数字误判为时间
+        return relativeDateFromCapture(dayWordTimePattern, text: text,
+                                       calendar: calendar, now: now, requireDayWord: true)
+    }
+
+    /// 从文本中提取相对时间并转标准日期（group: 1=日词 2=时 3=分）
+    private static func relativeDateFromCapture(_ pattern: String, text: String,
+                                                calendar: Calendar, now: Date,
+                                                requireDayWord: Bool) -> Date? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = text as NSString
+        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        func sub(_ i: Int) -> String? {
+            let r = match.range(at: i)
+            guard r.location != NSNotFound else { return nil }
+            return ns.substring(with: r)
+        }
+        let dayWord = sub(1)
+        if requireDayWord && dayWord == nil { return nil }
+        guard let hour = sub(2).flatMap(Int.init),
+              let minute = sub(3).flatMap(Int.init) else { return nil }
+        return relativeDate(dayWord: dayWord, hour: hour, minute: minute,
+                            calendar: calendar, now: now)
     }
 
     private static func dateFromCapture(_ pattern: String, groupIndex: Int, text: String, calendar: Calendar) -> Date? {

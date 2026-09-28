@@ -107,7 +107,8 @@ enum SmartExtractionService {
         return cents > 0 && cents < 99_999_999_00 ? cents : nil
     }
 
-    /// 模型输出的时间字符串 → Date，解析失败回退 fallback
+    /// 模型输出的时间字符串 → Date，解析失败回退 fallback。
+    /// v1.4.4：模型也可能直接输出「昨天 21:30」「20:30」这类相对时间 → 转标准日期
     static func parseTime(_ string: String, fallback: Date, calendar: Calendar = .current) -> Date {
         let formats = ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm",
                        "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm",
@@ -120,6 +121,10 @@ enum SmartExtractionService {
             if let date = formatter.date(from: trimmed) {
                 return date
             }
+        }
+        if let relative = PaymentTextParser.relativeDate(fromTimeText: trimmed,
+                                                         calendar: calendar, now: fallback) {
+            return relative
         }
         return fallback
     }
