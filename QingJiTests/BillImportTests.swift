@@ -229,10 +229,29 @@ final class PaymentTextParserTests: XCTestCase {
     }
 
     func testInlineDayWordTimeStrippedFromName() {
-        // 行内相对时间：从商户名中剥离
+        // 行内相对时间：从商户名中剥离（列表页多行场景）
+        let rows = PaymentTextParser.parseAll("""
+        昨天 21:35 麦当劳 -¥35.00
+        今天 08:10 地铁 +¥6.00
+        """, now: fixedNow)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].counterparty, "麦当劳")
+        XCTAssertEqual(rows[0].kind, .expense)
+        let c0 = comps(of: rows[0].date)
+        XCTAssertEqual([c0.day, c0.hour, c0.minute], [25, 21, 35])
+        XCTAssertEqual(rows[1].counterparty, "地铁")
+        XCTAssertEqual(rows[1].kind, .income)
+        let c1 = comps(of: rows[1].date)
+        XCTAssertEqual([c1.day, c1.hour, c1.minute], [26, 8, 10])
+    }
+
+    func testSingleSignedRowBorrowsMerchantFromRowCleanup() {
+        // 单行列表行截图：parse() 无标签收款方时，借用符号行清洗出的商户名与方向
         let rows = PaymentTextParser.parseAll("昨天 21:35 麦当劳 -¥35.00", now: fixedNow)
         XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].amountCents, 3500)
         XCTAssertEqual(rows[0].counterparty, "麦当劳")
+        XCTAssertEqual(rows[0].kind, .expense)
         let c = comps(of: rows[0].date)
         XCTAssertEqual([c.day, c.hour, c.minute], [25, 21, 35])
     }

@@ -170,6 +170,16 @@ enum PaymentTextParser {
         if let cents = single.amountCents {
             var result = single
             if result.kind == nil { result.kind = .expense }
+            // v1.4.4：单行列表行（如「昨天 21:35 麦当劳 -¥35.00」）没有标签收款方，
+            // parse() 取不到商户——借用符号行清洗出的商户名与收支方向
+            if rows.count == 1 {
+                if result.counterparty == nil, let name = rows[0].counterparty, !name.isEmpty {
+                    result.counterparty = name
+                }
+                if let rowKind = rows[0].kind {
+                    result.kind = rowKind
+                }
+            }
             return [result]
         }
         return rows

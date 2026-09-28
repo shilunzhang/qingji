@@ -159,20 +159,21 @@ struct OverviewView: View {
             ForEach(dayGroups) { group in
                 Section {
                     ForEach(group.items) { tx in
-                        Button {
-                            editing = tx
-                        } label: {
-                            TransactionRowView(tx: tx)
-                        }
-                        .buttonStyle(.plain)
-                        // v1.4.2：左滑删除已入账条目（余额由流水实时计算，删除即自动回滚）
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                deleteTransaction(tx)
-                            } label: {
-                                Label("删除", systemImage: "trash")
+                        // v1.4.5：取消点按编辑（行中段空白点击无响应），改为左滑操作
+                        TransactionRowView(tx: tx)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    deleteTransaction(tx)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                                Button {
+                                    editing = tx
+                                } label: {
+                                    Label("编辑", systemImage: "pencil")
+                                }
+                                .tint(.blue)
                             }
-                        }
                     }
                 } header: {
                     HStack {

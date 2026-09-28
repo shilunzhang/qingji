@@ -198,17 +198,15 @@ struct CalendarView: View {
                                hint: "如有消费，记得补一笔哦")
             } else {
                 ForEach(selectedDayTransactions) { tx in
-                    // v1.4.2：卡片内左滑删除（VStack 非 List，用自定义 SwipeDeleteRow）
-                    SwipeDeleteRow {
-                        context.delete(tx)
-                        try? context.save()
-                    } content: {
-                        Button {
-                            editing = tx
-                        } label: {
-                            TransactionRowView(tx: tx)
+                    // v1.4.5：取消点按编辑，左滑出「编辑 + 删除」（VStack 非 List，用自定义 SwipeActionRow）
+                    SwipeActionRow(
+                        onEdit: { editing = tx },
+                        onDelete: {
+                            context.delete(tx)
+                            try? context.save()
                         }
-                        .buttonStyle(.plain)
+                    ) {
+                        TransactionRowView(tx: tx)
                     }
                 }
             }

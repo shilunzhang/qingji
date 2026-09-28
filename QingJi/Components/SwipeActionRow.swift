@@ -1,26 +1,29 @@
 import SwiftUI
 
-/// 非 List 容器（卡片 / ScrollView）中的左滑删除行（v1.4.2，F-02/F-04）。
+/// 非 List 容器（卡片 / ScrollView）中的左滑操作行（v1.4.5，F-02/F-04）。
 ///
 /// List 里用系统 .swipeActions 即可；VStack 卡片内的行用它实现同等交互：
-/// - 横向拖拽露出红色删除按钮，松手按阈值吸附（露出 / 回弹）
+/// - 横向拖拽露出「编辑 + 删除」两个按钮（删除贴右缘），松手按阈值吸附（露出 / 回弹）
 /// - 一次滑过 fullSwipe 阈值直接删除
-/// - 仅响应横向为主的拖拽，纵向滚动不受影响；点击（编辑）不受影响
-struct SwipeDeleteRow<Content: View>: View {
+/// - 仅响应横向为主的拖拽，纵向滚动不受影响
+struct SwipeActionRow<Content: View>: View {
+    var onEdit: () -> Void
     var onDelete: () -> Void
     @ViewBuilder var content: () -> Content
 
     @State private var offsetX: CGFloat = 0
     @State private var settledX: CGFloat = 0
 
-    /// 露出删除按钮的吸附宽度
-    private let revealWidth: CGFloat = 76
-    /// 超过此负向偏移直接删除（约 1.8 倍露出宽度）
-    private let fullSwipeWidth: CGFloat = 140
+    private let buttonWidth: CGFloat = 60
+    private let buttonSpacing: CGFloat = 6
+    /// 完全露出时的吸附宽度（编辑 + 删除 + 间距）
+    private var revealWidth: CGFloat { buttonWidth * 2 + buttonSpacing + 10 }
+    /// 超过此负向偏移直接删除
+    private let fullSwipeWidth: CGFloat = 200
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            deleteButton
+            actionButtons
                 .opacity(offsetX < -revealWidth / 3 ? 1 : 0)
             content()
                 .offset(x: offsetX)
@@ -28,18 +31,28 @@ struct SwipeDeleteRow<Content: View>: View {
         }
     }
 
-    private var deleteButton: some View {
-        Button(role: .destructive) {
-            onDelete()
-        } label: {
-            Image(systemName: "trash.fill")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: revealWidth - 10, height: 40)
-                .background(Theme.alert, in: RoundedRectangle(cornerRadius: 9))
+    private var actionButtons: some View {
+        HStack(spacing: buttonSpacing) {
+            Button(action: onEdit) {
+                Image(systemName: "pencil")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: buttonWidth, height: 40)
+                    .background(Color.blue, in: RoundedRectangle(cornerRadius: 9))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("编辑")
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash.fill")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: buttonWidth, height: 40)
+                    .background(Theme.alert, in: RoundedRectangle(cornerRadius: 9))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("删除")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("删除")
     }
 
     private var dragGesture: some Gesture {
