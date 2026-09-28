@@ -83,25 +83,31 @@ struct PeriodNavHeader: View {
     let onNext: () -> Void
 
     var body: some View {
-        HStack {
+        // v1.4.6：箭头紧贴标题（此前左右 Spacer 把箭头推到两端，视觉割裂）
+        HStack(spacing: 10) {
+            Spacer(minLength: 0)
             Button(action: onPrev) {
                 Image(systemName: "chevron.left")
                     .font(.subheadline.weight(.semibold))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("上一月")
 
-            Spacer()
             Text(title)
                 .font(.headline)
-            Spacer()
 
             Button(action: onNext) {
                 Image(systemName: "chevron.right")
                     .font(.subheadline.weight(.semibold))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("下一月")
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 4)
     }
 }
 

@@ -15,13 +15,14 @@ struct OverviewView: View {
     var body: some View {
         NavigationStack {
             List {
-                monthSection
-                accountSection
+                summarySection
                 transactionSections
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(Color(uiColor: .systemBackground))
+            // v1.4.6：底部给浮动＋号让位，最后一行不被遮挡
+            .contentMargins(.bottom, 88)
             .navigationTitle("明细")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -74,57 +75,70 @@ struct OverviewView: View {
         }
     }
 
-    // MARK: - 视图（极简杂志系：白底、无卡片、大字汇总，文档 F-19）
+    // MARK: - 视图（极简杂志系：白底、大字汇总，文档 F-19；v1.4.6 汇总合一卡）
 
-    private var monthSection: some View {
+    /// 月支出/收入/结余 + 净资产/各账户 余额合并为单一卡片：
+    /// 隐私开关（眼睛）在框外，开启时整框模糊（F-20）
+    private var summarySection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 8) {
-                PeriodNavHeader(
-                    title: DateHelpers.title(of: .month, for: monthAnchor),
-                    onPrev: { monthAnchor = DateHelpers.shift(monthAnchor, by: -1, of: .month) },
-                    onNext: { monthAnchor = DateHelpers.shift(monthAnchor, by: 1, of: .month) }
-                )
-                TotalsBar(expenseCents: monthTotals.expense, incomeCents: monthTotals.income)
-            }
-            .padding(.top, 6)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-        }
-    }
-
-    private var accountSection: some View {
-        Section {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    accountCard(
-                        title: "净资产",
-                        amount: LedgerService.netWorthCents(accounts: accounts, transactions: transactions),
-                        icon: "chart.bar.doc.horizontal",
-                        colorHex: "FF8A3D"
+            HStack(alignment: .top, spacing: 6) {
+                VStack(alignment: .leading, spacing: 12) {
+                    PeriodNavHeader(
+                        title: DateHelpers.title(of: .month, for: monthAnchor),
+                        onPrev: { monthAnchor = DateHelpers.shift(monthAnchor, by: -1, of: .month) },
+                        onNext: { monthAnchor = DateHelpers.shift(monthAnchor, by: 1, of: .month) }
                     )
-                    ForEach(accounts.filter { !$0.isArchived }) { account in
-                        accountCard(
-                            title: account.name,
-                            amount: LedgerService.balanceCents(of: account, transactions: transactions),
-                            icon: account.icon,
-                            colorHex: account.colorHex
-                        )
+                    TotalsBar(expenseCents: monthTotals.expense, incomeCents: monthTotals.income)
+                    Divider()
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 18) {
+                            assetItem(
+                                title: "净资产",
+                                amount: netWorthCents,
+                                icon: "chart.bar.doc.horizontal",
+                                colorHex: "FF8A3D"
+                            )
+                            ForEach(accounts.filter { !$0.isArchived }) { account in
+                                assetItem(
+                                    title: account.name,
+                                    amount: LedgerService.balanceCents(of: account, transactions: transactions),
+                                    icon: account.icon,
+                                    colorHex: account.colorHex
+                                )
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
                 }
-                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .privacyMask() // 整框模糊（眼睛按钮在框外不模糊）
+
+                PrivacyEyeButton()
+                    .padding(.top, 4)
             }
+            .padding(14)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color(uiColor: .separator).opacity(0.35), lineWidth: 1)
+            )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
         }
     }
 
-    private func accountCard(title: String, amount: Int64, icon: String, colorHex: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var netWorthCents: Int64 {
+        LedgerService.netWorthCents(accounts: accounts, transactions: transactions)
+    }
+
+    /// 资产列：图标 + 名称 + 余额（紧凑纵向）
+    private func assetItem(title: String, amount: Int64, icon: String, colorHex: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(Color(hex: colorHex))
                 Text(title)
                     .font(.caption)
@@ -136,15 +150,9 @@ struct OverviewView: View {
                 .monospacedDigit()
                 .foregroundStyle(amount < 0 ? Theme.alert : .primary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.6)
         }
-        .padding(10)
-        .frame(width: 108, alignment: .leading)
-        .background(Color(uiColor: .systemBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color(uiColor: .separator).opacity(0.4), lineWidth: 1)
-        )
+        .frame(minWidth: 86, alignment: .leading)
     }
 
     @ViewBuilder

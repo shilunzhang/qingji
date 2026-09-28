@@ -49,20 +49,25 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 Section {
-                    HStack {
+                    HStack(alignment: .center) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("净资产")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            // v1.4.6：隐私开关开启时模糊数字（与明细页汇总卡全局同步）
                             Text(Money.string(fromCents: netWorth))
                                 .font(.title.weight(.semibold))
                                 .monospacedDigit()
                                 .foregroundStyle(netWorth < 0 ? Theme.alert : .primary)
+                                .privacyMask()
                         }
                         Spacer()
-                        Text("共 \(activeAccounts.count) 个账户 · \(transactions.count) 笔账目")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                        VStack(alignment: .trailing, spacing: 6) {
+                            PrivacyEyeButton()
+                            Text("共 \(activeAccounts.count) 个账户 · \(transactions.count) 笔账目")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                     .padding(.vertical, 4)
                 }
