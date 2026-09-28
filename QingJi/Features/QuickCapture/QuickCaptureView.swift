@@ -211,4 +211,42 @@ struct QuickCaptureView: View {
     private func commit(_ entry: DraftEntry, cents: Int64, account: Account) {
         var entry = entry
         if entry.category == nil, !entry.counterparty.isEmpty {
-            entry.category = CategoryPredictor.category(forMerchant: entry.counterparty, in
+            entry.category = CategoryPredictor.category(forMerchant: entry.counterparty, in: history)
+        }
+        let noteText = entry.note.isEmpty ? entry.counterparty : entry.note
+        let tx = Transaction(kind: entry.kind, amountCents: cents, date: entry.date,
+                             account: account, category: entry.category, note: noteText, channel: entry.channel)
+        context.insert(tx)
+        try? context.save()
+        AutoPostStore.shared.recordPosted(txID: tx.id, kind: entry.kind,
+                                          amountCents: cents, date: entry.date, note: noteText)
+        savedCount += 1
+        entries.removeAll { $0.id == entry.id }
+    }
+
+    private func handleImages(_ images: [UIImage]) {
+        processing = true
+        Task { @MainActor in
+            var drafts: [DraftEntry] = []
+            for image in images {
+                for row in await SmartExtractionService.extractRows(from: image) {
+                    drafts.append(makeEntry(from: row))
+                }
+            }
+            entries.append(contentsOf: drafts)
+            processing = false
+        }
+    }
+
+    private func makeEntry(from row: PaymentTextParser.ParsedPayment) -> DraftEntry {
+        var warning = ""
+        if (row.amountCents ?? 0) <= 0 { warning = "未识别出金额，请手动补填" }
+        return DraftEntry(kind: row.kind ?? .expense,
+                          amountText: row.amountCents.map { Money.inputString(fromCents: $0) } ?? "",
+                          date: row.date ?? Date(),
+                          counterparty: row.counterparty ?? "",
+                          note: row.note ?? "",
+                          channel: row.channel, category: nil,
+                          account: activeAccounts.first, warning: warning)
+    }
+}
