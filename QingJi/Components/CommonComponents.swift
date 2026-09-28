@@ -127,7 +127,8 @@ struct TotalsBar: View {
     }
 
     private func totalItem(label: String, cents: Int64, color: Color, emphasized: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        // v1.4.9：三列各自居中；大数字单行 + 最低缩到 0.5 防挤压重叠
+        VStack(alignment: .center, spacing: 2) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -136,8 +137,8 @@ struct TotalsBar: View {
                 .foregroundStyle(color)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.5)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }

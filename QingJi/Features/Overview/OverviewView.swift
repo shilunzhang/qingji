@@ -81,10 +81,11 @@ struct OverviewView: View {
     // MARK: - 视图（极简杂志系：白底、大字汇总，文档 F-19；v1.4.6 汇总合一卡）
 
     /// 月支出/收入/结余 + 净资产/各账户 余额合并为单一卡片：
-    /// 隐私开关（眼睛）在框外，开启时整框模糊（F-20）
+    /// v1.4.9 眼睛图标以覆盖层浮在框右上角（月份行右侧空区），不再挤占内容列；
+    /// 内边距 20pt 与下方系统分组卡对齐
     private var summarySection: some View {
         Section {
-            HStack(alignment: .top, spacing: 6) {
+            ZStack(alignment: .topTrailing) {
                 VStack(alignment: .leading, spacing: 12) {
                     PeriodNavHeader(
                         title: DateHelpers.title(of: .month, for: monthAnchor),
@@ -114,10 +115,10 @@ struct OverviewView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .privacyMask() // 整框模糊（眼睛按钮在框外不模糊）
+                .privacyMask() // 整框模糊（眼睛覆盖其上，不受模糊影响）
 
+                // 覆盖层：浮在月份行右侧空区，不占布局宽度，主信息恢复整宽居中
                 PrivacyEyeButton()
-                    .padding(.top, 4)
             }
             .padding(14)
             .background(Color(uiColor: .secondarySystemGroupedBackground))
@@ -128,7 +129,7 @@ struct OverviewView: View {
             )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+            .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
         }
     }
 
