@@ -3,6 +3,7 @@ import SwiftData
 
 /// 记账日历（文档 F-04）：月历标记 + 当日流水（查账/补账/改账）+ 年汇总
 struct CalendarView: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: \Transaction.date, order: .reverse) private var transactions: [Transaction]
 
     @State private var monthAnchor = Date()
@@ -197,12 +198,18 @@ struct CalendarView: View {
                                hint: "如有消费，记得补一笔哦")
             } else {
                 ForEach(selectedDayTransactions) { tx in
-                    Button {
-                        editing = tx
-                    } label: {
-                        TransactionRowView(tx: tx)
+                    // v1.4.2：卡片内左滑删除（VStack 非 List，用自定义 SwipeDeleteRow）
+                    SwipeDeleteRow {
+                        context.delete(tx)
+                        try? context.save()
+                    } content: {
+                        Button {
+                            editing = tx
+                        } label: {
+                            TransactionRowView(tx: tx)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }

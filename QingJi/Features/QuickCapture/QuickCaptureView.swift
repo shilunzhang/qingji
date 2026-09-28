@@ -163,8 +163,17 @@ struct QuickCaptureView: View {
                 .keyboardType(.decimalPad)
                 .font(.title3.weight(.bold))
                 .monospacedDigit()
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    discardSwipe(entry.wrappedValue.id)
+                }
             DatePicker("时间", selection: entry.date)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    discardSwipe(entry.wrappedValue.id)
+                }
             TextField("收款方/商户", text: entry.counterparty)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    discardSwipe(entry.wrappedValue.id)
+                }
             HStack {
                 Text("账户")
                 Spacer()
@@ -174,6 +183,9 @@ struct QuickCaptureView: View {
                     }
                 }
             }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                discardSwipe(entry.wrappedValue.id)
+            }
             HStack {
                 Text("分类")
                 Spacer()
@@ -181,6 +193,14 @@ struct QuickCaptureView: View {
                     categoryTarget = CategoryTarget(entryID: entry.wrappedValue.id)
                 }
                 .foregroundStyle(.secondary)
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                discardSwipe(entry.wrappedValue.id)
+            }
+            if let dup = duplicateHint(for: entry.wrappedValue) {
+                Label("疑似与已有账目重复：\(dup.summary)", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(Theme.alert)
             }
             if !entry.wrappedValue.warning.isEmpty {
                 Label(entry.wrappedValue.warning, systemImage: "exclamationmark.triangle")
@@ -193,6 +213,27 @@ struct QuickCaptureView: View {
             }
             .disabled(!canSave(entry.wrappedValue))
         }
+    }
+
+    // MARK: - v1.4.2 重复提示与左滑丢弃
+
+    /// 左滑丢弃候选条目（从待确认列表移除，不入账）
+    @ViewBuilder
+    private func discardSwipe(_ id: DraftEntry.ID) -> some View {
+        Button(role: .destructive) {
+            withAnimation { entries.removeAll { $0.id == id } }
+        } label: {
+            Label("丢弃", systemImage: "trash")
+        }
+    }
+
+    /// F-14 预检提示：与历史账目同向同额且时间差 ≤ 窗口 → 审核卡片上黄字提醒。
+    /// 保存时仍会走完整闸门（弹窗确认/阻止），这里只是提前告知
+    private func duplicateHint(for entry: DraftEntry) -> DuplicateMatch? {
+        guard DuplicateGuard.sensitivity != .off else { return nil }
+        guard let cents = Money.cents(fromString: entry.amountText), cents > 0 else { return nil }
+        return DuplicateGuard.findDuplicate(of: entry.kind, amountCents: cents,
+                                            date: entry.date, in: history)
     }
 
     private var doneView: some View {

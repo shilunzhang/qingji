@@ -6,6 +6,8 @@ import UIKit
 struct AlbumScanView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
+    /// v1.4.2：重复提示需要查询历史账目
+    @Query private var transactions: [Transaction]
     @StateObject private var model = AlbumScanModel.shared
 
     @State private var authorized = false
@@ -115,9 +117,21 @@ struct AlbumScanView: View {
                 .keyboardType(.decimalPad)
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    discardSwipe(draft.wrappedValue)
+                }
             DatePicker("时间", selection: draft.date)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    discardSwipe(draft.wrappedValue)
+                }
             TextField("收款方/商户", text: draft.counterparty)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    discardSwipe(draft.wrappedValue)
+                }
             TextField("备注", text: draft.note)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    discardSwipe(draft.wrappedValue)
+                }
             if let channel = draft.wrappedValue.channel {
                 HStack {
                     Text("渠道")
@@ -130,6 +144,9 @@ struct AlbumScanView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    discardSwipe(draft.wrappedValue)
                 }
             }
             HStack {
@@ -144,6 +161,9 @@ struct AlbumScanView: View {
                 }
                 .foregroundStyle(draft.wrappedValue.account == nil ? Color.orange : Color.primary)
             }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                discardSwipe(draft.wrappedValue)
+            }
             HStack {
                 Text("分类")
                 Spacer()
@@ -151,6 +171,14 @@ struct AlbumScanView: View {
                     categoryTarget = CategoryTarget(draftID: draft.wrappedValue.id)
                 }
                 .foregroundStyle(draft.wrappedValue.category == nil ? .secondary : .primary)
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                discardSwipe(draft.wrappedValue)
+            }
+            if let dup = duplicateHint(for: draft.wrappedValue) {
+                Label("疑似与已有账目重复：\(dup.summary)", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(Theme.alert)
             }
             if !draft.wrappedValue.warning.isEmpty {
                 Label(draft.wrappedValue.warning, systemImage: "exclamationmark.triangle")
@@ -177,6 +205,27 @@ struct AlbumScanView: View {
                 .disabled(!canSave(draft.wrappedValue))
             }
         }
+    }
+
+    // MARK: - v1.4.2 重复提示与左滑丢弃
+
+    /// 左滑丢弃草稿：等同「忽略」（登记已处理，下次扫描不再弹出）
+    @ViewBuilder
+    private func discardSwipe(_ draft: AlbumScanDraft) -> some View {
+        Button(role: .destructive) {
+            withAnimation { model.ignore(draft) }
+        } label: {
+            Label("丢弃", systemImage: "trash")
+        }
+    }
+
+    /// F-14 预检提示：与历史账目同向同额且时间差 ≤ 窗口 → 草稿卡片上黄字提醒。
+    /// 入账时仍会走自动闸门（疑似重复会记日志跳过）
+    private func duplicateHint(for draft: AlbumScanDraft) -> DuplicateMatch? {
+        guard DuplicateGuard.sensitivity != .off else { return nil }
+        guard let cents = Money.cents(fromString: draft.amountText), cents > 0 else { return nil }
+        return DuplicateGuard.findDuplicate(of: draft.kind, amountCents: cents,
+                                            date: draft.date, in: transactions)
     }
 
     private var activeAccounts: [Account] {

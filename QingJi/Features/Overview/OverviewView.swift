@@ -166,6 +166,14 @@ struct OverviewView: View {
                             TransactionRowView(tx: tx)
                         }
                         .buttonStyle(.plain)
+                        // v1.4.2：左滑删除已入账条目（余额由流水实时计算，删除即自动回滚）
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                deleteTransaction(tx)
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                        }
                     }
                 } header: {
                     HStack {
@@ -186,6 +194,13 @@ struct OverviewView: View {
         let weekdayIndex = (cal.component(.weekday, from: date) + 5) % 7
         let weekday = DateHelpers.weekdayTitles[weekdayIndex]
         return "\(cal.component(.month, from: date))月\(day)日 周\(weekday)"
+    }
+
+    /// 左滑删除：余额由流水实时计算（LedgerService.balanceCents），删除即自动回滚；
+    /// 自动入账日志保留，防止自动化把用户明确删除的账目重新加回
+    private func deleteTransaction(_ tx: Transaction) {
+        context.delete(tx)
+        try? context.save()
     }
 
     private func dayTotalsText(expense: Int64, income: Int64) -> String {
