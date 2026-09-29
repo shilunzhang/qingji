@@ -39,13 +39,15 @@ struct FloatingAddButton: View {
         return .bottom
     }
 
-    /// 右贴靠的基础角度；左贴靠时以竖直轴镜像（θ → 180°-θ），朝屏幕内侧展开
+    /// 右贴靠的基础角度；左贴靠时以竖直轴镜像（θ → 180°-θ），朝屏幕内侧展开。
+    /// v1.5.4 端点内收 7.5°（跨度 75°、间隔 37.5° 均匀）：端点落在象限边界时
+    /// 90° 图标贴 + 号正上方（距屏幕边缘仅 47pt 一列）、180° 图标骑边平行线——均不美观
     private var arcAngles: [Double] {
         let base: [Double]
         switch arcRegion {
-        case .bottom: base = [180, 135, 90]   // 截图、拍照、手动：左 → 上
-        case .middle: base = [225, 180, 135]  // 左下 → 左上，围绕正左
-        case .top: base = [180, 225, 270]     // 左 → 下，与底部镜像对称
+        case .bottom: base = [172.5, 135, 97.5]   // 截图、拍照、手动：左 → 上
+        case .middle: base = [217.5, 180, 142.5]  // 左下 → 左上，围绕正左
+        case .top: base = [187.5, 225, 262.5]     // 左 → 下，与底部镜像对称
         }
         guard !sideRight else { return base }
         return base.map { ((180 - $0) + 360).truncatingRemainder(dividingBy: 360) }
@@ -157,11 +159,13 @@ struct FloatingAddButton: View {
     }
 
     /// v1.5.2 弧形子按钮按压反馈：按下轻微缩小，松手弹回
+    /// （注：Xcode 26 SDK 中 Animation.spring 成为静态属性，遮蔽带 extraBounce 的
+    /// 函数重载导致编译错误，统一改用 spring(duration:)）
     private struct PressScaleButtonStyle: ButtonStyle {
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
                 .scaleEffect(configuration.isPressed ? 0.88 : 1)
-                .animation(.spring(duration: 0.2, extraBounce: 0.3), value: configuration.isPressed)
+                .animation(.spring(duration: 0.2), value: configuration.isPressed)
         }
     }
 
@@ -215,7 +219,7 @@ private struct FabDragLayer<Content: View>: View {
         // 弧形按钮可点击（主按钮区域被上层命中区覆盖）
         content()
             .scaleEffect(isTouching && !expanded ? 1.2 : 1)
-            .animation(.spring(duration: 0.25, extraBounce: 0.35), value: isTouching)
+            .animation(.spring(duration: 0.25), value: isTouching)
             .position(x: (rest.x + dragOffset.width).clamped(to: liveXRange),
                       y: (rest.y + dragOffset.height).clamped(to: liveYRange))
         // 固定命中层（上层）：位置恒为停靠点，手势全程不被打断
