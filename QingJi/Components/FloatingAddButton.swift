@@ -16,8 +16,10 @@ struct FloatingAddButton: View {
     /// v1.5.3 拖动中（用于玻璃降级，见 ②）
     @State private var isDraggingNow = false
 
-    /// FAB 中心纵向位置（屏幕高度归一化，从底部量），跨启动持久化
-    @AppStorage("qingji.fab.yNormFromBottom") private var yNormFromBottom: Double = 0.14
+    /// FAB 中心纵向位置（屏幕高度归一化，从底部量），跨启动持久化。
+    /// v1.5.5 换新存储键并提默认高度：旧默认 0.14 在放宽下限后会压到 Tab 栏，
+    /// 新默认 0.2（约 H-170）弧形横向臂完全脱离 Tab 栏
+    @AppStorage("qingji.fab.yNormV2") private var yNormFromBottom: Double = 0.2
     /// 贴靠侧：true=右缘，false=左缘
     @AppStorage("qingji.fab.sideRight") private var sideRight = true
 
@@ -25,9 +27,10 @@ struct FloatingAddButton: View {
     private let mainSize: CGFloat = 58
     private let arcSize: CGFloat = 48
     private let snapInset: CGFloat = 18
-    private let topSafe: CGFloat = 90
-    /// 底部安全线：FAB 中心距底 ≥160pt（弧形横向臂不压 Tab 栏）
-    private let bottomSafe: CGFloat = 160
+    /// v1.5.5 纵向活动范围放宽：上 70（状态栏/灵动岛之下）、下 110（主屏幕指示条之上），
+    /// 用户可自由贴顶/贴底（极值处弧形与 Tab 栏重叠属用户自主选择，扇形方向仍自适应）
+    private let topSafe: CGFloat = 70
+    private let bottomSafe: CGFloat = 110
 
     // MARK: - 弧形区域（90° 象限内 45° 均匀排开）
 
@@ -210,8 +213,9 @@ private struct FabDragLayer<Content: View>: View {
 
     private let mainSize: CGFloat = 58
     private let edgeInset: CGFloat = 47          // snapInset 18 + 半径 29
-    private let topSafe: CGFloat = 90
-    private let bottomSafe: CGFloat = 160
+    /// 与父视图一致（v1.5.5 放宽）：上 70 / 下 110
+    private let topSafe: CGFloat = 70
+    private let bottomSafe: CGFloat = 110
     private let tapThreshold: CGFloat = 12
 
     var body: some View {

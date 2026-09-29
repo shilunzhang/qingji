@@ -81,8 +81,9 @@ struct OverviewView: View {
     // MARK: - 视图（极简杂志系：白底、大字汇总，文档 F-19；v1.4.6 汇总合一卡）
 
     /// 月支出/收入/结余 + 净资产/各账户 余额合并为单一卡片：
-    /// v1.4.9 眼睛图标以覆盖层浮在框右上角（月份行右侧空区），不再挤占内容列；
-    /// 内边距 20pt 与下方系统分组卡对齐
+    /// v1.5.5 改用系统 listRowBackground 画分组卡背景——与下方账目分区同一布局机制，
+    /// 像素级同宽对齐（此前手绘背景靠猜内边距，始终有偏差且暗色模式不一致）；
+    /// 眼睛图标以覆盖层浮在框右上角（月份行右侧空区），不挤占内容列
     private var summarySection: some View {
         Section {
             ZStack(alignment: .topTrailing) {
@@ -120,16 +121,9 @@ struct OverviewView: View {
                 // 覆盖层：浮在月份行右侧空区，不占布局宽度，主信息恢复整宽居中
                 PrivacyEyeButton()
             }
-            .padding(14)
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color(uiColor: .separator).opacity(0.35), lineWidth: 1)
-            )
-            .listRowBackground(Color.clear)
+            .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
             .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
+            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
         }
     }
 
