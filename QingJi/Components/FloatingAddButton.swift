@@ -208,7 +208,9 @@ private struct FabDragLayer<Content: View>: View {
 
     @State private var dragOffset: CGSize = .zero
     @GestureState private var isTouching = false
-    /// 已越过点按阈值（真拖动开始），用于 onDragStart 只触发一次
+    /// v1.6.1 Button 按压态（触摸落下立即为 true——单击也放大，与拖动一致）
+    @State private var isPressed = false
+    /// 已越过点按阈值（真拖动开始），用于 onDragStart 只触发一次 + 缩放态兜底
     @State private var didStartDrag = false
 
     private let mainSize: CGFloat = 58
@@ -222,19 +224,42 @@ private struct FabDragLayer<Content: View>: View {
         // 视觉层（下层）：跟随手指位移（钳制的是"结果坐标"，不是偏移量本身）；
         // 弧形按钮可点击（主按钮区域被上层命中区覆盖）
         content()
-            .scaleEffect(isTouching && !expanded ? 1.2 : 1)
-            .animation(.spring(duration: 0.25), value: isTouching)
+            .scaleEffect(isPressedNow ? 1.2 : 1)
+            .animation(.spring(duration: 0.25), value: isPressedNow)
             .position(x: (rest.x + dragOffset.width).clamped(to: liveXRange),
                       y: (rest.y + dragOffset.height).clamped(to: liveYRange))
-        // 固定命中层（上层）：位置恒为停靠点，手势全程不被打断
-        Circle()
-            .fill(Color.clear)
-            .frame(width: mainSize, height: mainSize)
-            .contentShape(Circle().inset(by: -10))
-            .position(rest)
-            .gesture(fabGesture)
-            .accessibilityLabel("记账菜单，可拖动")
-            .accessibilityAddTraits(.isButton)
+        // 固定命中层（上层）：位置恒为停靠点，手势全程不被打断。
+        // v1.6.1 改用 Button 承载点按——其按压态(configuration.isPressed)触摸落下立即
+        // 为 true，单击也能放大（旧 @GestureState.updating 只在手指移动后才触发）；
+        // 拖动由 minimumDistance 12 的并行手势接管（Button 自动取消，按压态无缝接力）
+        Button(action: onTap) {
+            Color.clear
+                .frame(width: mainSize, height: mainSize)
+                .contentShape(Circle().inset(by: -10))
+        }
+        .buttonStyle(HotspotPressStyle(pressed: $isPressed))
+        .simultaneousGesture(fabGesture)
+        .position(rest)
+        .accessibilityLabel("记账菜单，可拖动")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// 放大态：Button 按压（单击/按下）∨ 手势活动（拖动）∨ 已越过拖动阈值
+    /// （didStartDrag 兜底，避免 Button 取消与手势激活交替的 1 帧缝隙造成缩放闪跳）
+    private var isPressedNow: Bool {
+        !expanded && (isPressed || isTouching || didStartDrag)
+    }
+
+    /// 把 Button 的按压态透传给宿主视图
+    private struct HotspotPressStyle: ButtonStyle {
+        @Binding var pressed: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .onChange(of: configuration.isPressed) { _, newValue in
+                    pressed = newValue
+                }
+        }
     }
 
     private var liveXRange: ClosedRange<CGFloat> {
@@ -246,26 +271,19 @@ private struct FabDragLayer<Content: View>: View {
     }
 
     private var fabGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+        DragGesture(minimumDistance: tapThreshold) // 点按交给 Button，仅真拖动激活
             .updating($isTouching) { _, state, _ in
-                state = true // 触摸期间保持放大（含拖动全程），松手自动复位
+                state = true // 拖动期间保持放大，松手自动复位
             }
             .onChanged { value in
                 dragOffset = value.translation
-                if !didStartDrag,
-                   hypot(value.translation.width, value.translation.height) >= tapThreshold {
+                if !didStartDrag {
                     didStartDrag = true
                     onDragStart()
                 }
             }
             .onEnded { value in
-                let distance = hypot(value.translation.width, value.translation.height)
                 defer { didStartDrag = false }
-                guard distance >= tapThreshold else {
-                    dragOffset = .zero
-                    onTap() // 小位移 = 点按：展开/收起
-                    return
-                }
                 let finalX = (rest.x + value.translation.width).clamped(to: liveXRange)
                 let finalY = (rest.y + value.translation.height).clamped(to: liveYRange)
                 let goRight = finalX >= bounds.width / 2
