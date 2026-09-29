@@ -14,6 +14,8 @@ struct OverviewView: View {
     @State private var showAlbumScan = false
     /// v1.6.0：汇总卡左上角日历图标弹出的日历卡片
     @State private var showCalendar = false
+    /// v1.6.2：汇总卡图表图标弹出的图表卡片
+    @State private var showStats = false
 
     var body: some View {
         NavigationStack {
@@ -46,6 +48,10 @@ struct OverviewView: View {
             // v1.6.0：日历卡片（中等高度 sheet，月历网格 + 当日流水）
             .sheet(isPresented: $showCalendar) {
                 CalendarCardView()
+            }
+            // v1.6.2：图表卡片（大高度 sheet，饼图/趋势/排行）
+            .sheet(isPresented: $showStats) {
+                StatsCardView()
             }
             .sheet(item: $editing) { tx in
                 // 修复A：编辑页取消/保存在 toolbar 中，必须包 NavigationStack
@@ -127,19 +133,33 @@ struct OverviewView: View {
                 // 覆盖层：浮在月份行右侧空区，不占布局宽度，主信息恢复整宽居中
                 PrivacyEyeButton()
             }
-            // v1.6.0：日期左侧日历图标（与右侧眼睛对称），点击弹出日历卡片
+            // v1.6.2：日期左侧功能图标组（日历 + 图表成对），与右侧眼睛对称
             .overlay(alignment: .topLeading) {
-                Button {
-                    showCalendar = true
-                } label: {
-                    Image(systemName: "calendar")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .contentShape(Rectangle())
+                HStack(spacing: 2) {
+                    Button {
+                        showCalendar = true
+                    } label: {
+                        Image(systemName: "calendar")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("日历")
+
+                    Button {
+                        showStats = true
+                    } label: {
+                        Image(systemName: "chart.pie")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("图表")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("日历")
             }
             .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
             .listRowSeparator(.hidden)

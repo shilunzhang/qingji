@@ -11,21 +11,18 @@ struct StatsView: View {
     @State private var kind: TxKind = .expense
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    controlSection
-                    summaryCard
-                    pieCard
-                    trendCard
-                    rankCard
-                }
-                .padding(16)
+        // v1.6.2：导航容器由外部提供（图表卡片 StatsCardView 包 NavigationStack + 标题）
+        ScrollView {
+            VStack(spacing: 14) {
+                controlSection
+                summaryCard
+                pieCard
+                trendCard
+                rankCard
             }
-            .background(Color(uiColor: .systemGroupedBackground))
-            // v1.4.7：去除页面大标题，导航栏隐藏
-            .toolbar(.hidden, for: .navigationBar)
+            .padding(16)
         }
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     // MARK: - 数据
@@ -211,5 +208,26 @@ struct StatsView: View {
             }
         }
         .card()
+    }
+}
+
+/// 图表卡片（v1.6.2）：由明细页汇总卡图表图标弹出（大高度 sheet 卡片，非独立页面）。
+/// 原「图表」Tab 页移除后的能力载体
+struct StatsCardView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            StatsView()
+                .navigationTitle("图表")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("完成") { dismiss() }
+                    }
+                }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
