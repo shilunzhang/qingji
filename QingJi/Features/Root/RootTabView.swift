@@ -2,10 +2,6 @@ import SwiftUI
 import SwiftData
 import UIKit
 
-enum AppTab: Hashable {
-    case overview, mine
-}
-
 /// 「＋」浮标菜单目标（单一 sheet(item:) 驱动）
 enum AddSheet: Identifiable {
     case screenshotImport
@@ -24,27 +20,24 @@ enum AddSheet: Identifiable {
     }
 }
 
-/// 根框架：4 位 Tab + 右下角浮动记账按钮（文档 §6.1 / v1.4）
+/// 根框架（v1.6.3）：单明细界面——Tab 栏移除，整个 App 只有明细页；
+/// 「我的」改为顶部右上角头像图标（纯符号，与汇总卡眼睛同形、字号略大），
+/// 点击以**整页 fullScreenCover**呈现（非卡片）；右下角浮动记账按钮保留
 struct RootTabView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var appLock = AppLockManager()
-    @State private var selection: AppTab = .overview
     @State private var activeSheet: AddSheet?
     @State private var captureHint: String?
+    @State private var showMine = false
 
     var body: some View {
-        TabView(selection: $selection) {
-            OverviewView()
-                .tabItem { Label("明细", systemImage: "list.bullet.rectangle") }
-                .tag(AppTab.overview)
-
-            SettingsView()
-                .tabItem { Label("我的", systemImage: "person") }
-                .tag(AppTab.mine)
-        }
-        .sheet(item: $activeSheet) { sheet in
+        OverviewView()
+            // v1.6.3：顶部安全区下留一条 40pt 空白条放「我的」图标——无导航栏，
+            // 空白条把汇总卡压在图标之下，静止时与卡内眼睛错开
+            .safeAreaInset(edge: .top, spacing: 0) { mineEntryBar }
+            .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .screenshotImport:
                 // v1.4.3：选择器内嵌为 sheet 内容（无内层 sheet，取消一次关闭）
@@ -81,6 +74,16 @@ struct RootTabView: View {
                 lockOverlay
             }
         }
+        // v1.6.3：我的页整页呈现；fullScreenCover 无下滑关闭，关闭按钮在页内
+        .fullScreenCover(isPresented: $showMine) {
+            SettingsView()
+                .environmentObject(appLock)
+        }
+        // 模态由独立图层承载，锁屏遮罩盖不住——锁定即收起我的页，
+        // 回前台先看到解锁遮罩（此前 Tab 结构无此问题）
+        .onChange(of: appLock.isLocked) { _, locked in
+            if locked { showMine = false }
+        }
         .onChange(of: scenePhase) { _, phase in
             appLock.handleScenePhase(phase)
         }
@@ -101,6 +104,32 @@ struct RootTabView: View {
                 }
             }
         }
+    }
+
+    // MARK: - 「我的」入口（v1.6.3）
+
+    /// 顶部窄条：仅一个头像图标贴右上角。沿用眼睛图标的纯符号形式
+    /// （secondary 无底、无边框、无玻璃），仅字号/命中区 32→38pt 略放大；
+    /// 条带本身留空不铺底色——卡住下拉刷新转圈（明细页下拉=扫描相册）会画在
+    /// 顶部安全区里，铺不透明底色会把转圈盖住；空白条同时把汇总卡压在图标之下，
+    /// 静止时图标与卡内眼睛不重叠
+    private var mineEntryBar: some View {
+        HStack(spacing: 0) {
+            Spacer()
+            Button {
+                showMine = true
+            } label: {
+                Image(systemName: "person.crop.circle")
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, height: 38)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("我的")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 2)
     }
 
     // MARK: - App 锁

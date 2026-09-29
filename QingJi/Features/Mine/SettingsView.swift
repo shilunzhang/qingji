@@ -1,10 +1,13 @@
 import SwiftUI
 import SwiftData
 
-/// 我的页（文档 F-08）：入口聚合 + 净资产 + App 锁 + CSV 导出
+/// 我的页（文档 F-08）：入口聚合 + 净资产 + App 锁 + CSV 导出。
+/// v1.6.3：由明细页右上角头像图标以 fullScreenCover **整页**呈现（非卡片）；
+/// 全屏 cover 无下滑关闭，故本页保留导航栏并自带「完成」关闭按钮
 struct SettingsView: View {
     @EnvironmentObject private var appLock: AppLockManager
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
 
     @Query(sort: \Transaction.date, order: .reverse) private var transactions: [Transaction]
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
@@ -144,8 +147,14 @@ struct SettingsView: View {
                     Text("数据存储在本机与你的 iCloud，开发者无法读取")
                 }
             }
-            // v1.4.7：去除页面大标题，导航栏隐藏（推入的二级页面标题保留）
-            .toolbar(.hidden, for: .navigationBar)
+            // v1.6.3：整页呈现需自带出口——小标题 + 「完成」关闭（推入的二级页面标题保留）
+            .navigationTitle("我的")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
             .onAppear { appLock.refreshAvailability() }
             .sheet(isPresented: $showSetupGuide) {
                 NavigationStack { SetupGuideView() }
