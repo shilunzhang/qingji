@@ -22,6 +22,8 @@ struct FloatingAddButton: View {
     @AppStorage("qingji.fab.sideRight") private var sideRight = true
     /// 拖动中的实时位移（普通 @State：松手与停靠位在同一次动画里结算，避免回弹闪烁）
     @State private var dragOffset: CGSize = .zero
+    /// v1.5.2 按压态（小白点手感）：触摸期间放大，松手弹回（@GestureState 自动复位）
+    @GestureState private var isTouching = false
 
     private let radius: CGFloat = 116
     private let mainSize: CGFloat = 58
@@ -120,6 +122,9 @@ struct FloatingAddButton: View {
 
     private func fabDragGesture(in geo: GeometryProxy) -> some Gesture {
         DragGesture(minimumDistance: 0)
+            .updating($isTouching) { _, state, _ in
+                state = true // 触摸期间保持放大（含拖动全程），松手自动复位
+            }
             .onChanged { value in
                 dragOffset = value.translation
                 // 超过点按阈值才算真拖动：收起菜单（纯点按不动菜单，交给 onEnded 切换）
@@ -161,6 +166,9 @@ struct FloatingAddButton: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .frame(width: mainSize, height: mainSize)
+        // v1.5.2 小白点手感：按下放大 1.2 倍，松手带弹性回弹
+        .scaleEffect(isTouching ? 1.2 : 1)
+        .animation(.spring(duration: 0.25, extraBounce: 0.35), value: isTouching)
         .contentShape(Circle().inset(by: -8))
         .gesture(dragGesture)
         .accessibilityLabel(isExpanded ? "收起记账菜单" : "记账菜单，可拖动")
@@ -184,9 +192,18 @@ struct FloatingAddButton: View {
             .frame(width: arcSize, height: arcSize)
             .contentShape(Circle().inset(by: -12)) // 命中区外扩 12pt
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleButtonStyle())
         .offset(x: cos(radians) * radius, y: -sin(radians) * radius)
         .accessibilityLabel(item.sheet.title)
+    }
+
+    /// v1.5.2 弧形子按钮按压反馈：按下轻微缩小，松手弹回
+    private struct PressScaleButtonStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.88 : 1)
+                .animation(.spring(duration: 0.2, extraBounce: 0.3), value: configuration.isPressed)
+        }
     }
 
     /// 液态玻璃背景层：iOS 26 用 glassEffect，低版本用超薄材质
