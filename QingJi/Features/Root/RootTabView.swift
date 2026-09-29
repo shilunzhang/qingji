@@ -3,7 +3,7 @@ import SwiftData
 import UIKit
 
 enum AppTab: Hashable {
-    case overview, stats, calendar, mine
+    case overview, stats, mine
 }
 
 /// 「＋」浮标菜单目标（单一 sheet(item:) 驱动）
@@ -43,10 +43,6 @@ struct RootTabView: View {
             StatsView()
                 .tabItem { Label("图表", systemImage: "chart.pie") }
                 .tag(AppTab.stats)
-
-            CalendarView()
-                .tabItem { Label("日历", systemImage: "calendar") }
-                .tag(AppTab.calendar)
 
             SettingsView()
                 .tabItem { Label("我的", systemImage: "person") }

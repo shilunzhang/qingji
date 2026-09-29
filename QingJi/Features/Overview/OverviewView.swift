@@ -12,6 +12,8 @@ struct OverviewView: View {
     @State private var editing: Transaction?
     /// v1.4.8：下拉扫描后弹出相册批量确认页
     @State private var showAlbumScan = false
+    /// v1.6.0：汇总卡左上角日历图标弹出的日历卡片
+    @State private var showCalendar = false
 
     var body: some View {
         NavigationStack {
@@ -40,6 +42,10 @@ struct OverviewView: View {
             }
             .sheet(isPresented: $showAlbumScan) {
                 NavigationStack { AlbumScanView() }
+            }
+            // v1.6.0：日历卡片（中等高度 sheet，月历网格 + 当日流水）
+            .sheet(isPresented: $showCalendar) {
+                CalendarCardView()
             }
             .sheet(item: $editing) { tx in
                 // 修复A：编辑页取消/保存在 toolbar 中，必须包 NavigationStack
@@ -120,6 +126,20 @@ struct OverviewView: View {
 
                 // 覆盖层：浮在月份行右侧空区，不占布局宽度，主信息恢复整宽居中
                 PrivacyEyeButton()
+            }
+            // v1.6.0：日期左侧日历图标（与右侧眼睛对称），点击弹出日历卡片
+            .overlay(alignment: .topLeading) {
+                Button {
+                    showCalendar = true
+                } label: {
+                    Image(systemName: "calendar")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("日历")
             }
             .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
             .listRowSeparator(.hidden)

@@ -1,35 +1,54 @@
 import SwiftUI
 import SwiftData
 
-/// 记账日历（文档 F-04）：月历标记 + 当日流水（查账/补账/改账）+ 年汇总
-struct CalendarView: View {
+/// 日历卡片（v1.6.0）：由明细页汇总卡左上角日历图标弹出（中等高度 sheet 卡片）。
+/// 原「日历」Tab 页移除后的能力载体：月历网格（收支点标 + 当日支出短金额）
+/// + 当日流水（左滑编辑/删除）。年汇总能力由「图表」页承担。
+struct CalendarCardView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Transaction.date, order: .reverse) private var transactions: [Transaction]
 
     @State private var monthAnchor = Date()
-    @State private var showYear = false
     @State private var selectedDay = Calendar.current.startOfDay(for: Date())
     @State private var editing: Transaction?
 
     var body: some View {
         NavigationStack {
-            Group {
-                if showYear {
-                    yearSummary
-                } else {
-                    monthCalendar
+            ScrollView {
+                VStack(spacing: 14) {
+                    VStack(spacing: 8) {
+                        PeriodNavHeader(
+                            title: DateHelpers.title(of: .month, for: monthAnchor),
+                            onPrev: { shiftMonth(-1) },
+                            onNext: { shiftMonth(1) }
+                        )
+                        weekdayRow
+                        grid
+                    }
+                    .card()
+
+                    dayDetail
                 }
+                .padding(16)
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            // v1.4.7：去除页面大标题，导航栏隐藏；「年/月」切换挪进内容区
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("日历")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
             .sheet(item: $editing) { tx in
-                // 修复A：编辑页取消/保存在 toolbar 中，必须包 NavigationStack
+                // 编辑页取消/保存在 toolbar 中，必须包 NavigationStack
                 NavigationStack {
                     AddTransactionView(mode: .edit(tx))
                 }
             }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - 数据
@@ -64,44 +83,6 @@ struct CalendarView: View {
     }
 
     // MARK: - 月历
-
-    private var monthCalendar: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                VStack(spacing: 8) {
-                    PeriodNavHeader(
-                        title: DateHelpers.title(of: .month, for: monthAnchor),
-                        onPrev: { shiftMonth(-1) },
-                        onNext: { shiftMonth(1) }
-                    )
-                    .overlay(alignment: .trailing) {
-                        yearMonthToggle
-                    }
-                    weekdayRow
-                    grid
-                }
-                .card()
-
-                dayDetail
-            }
-            .padding(16)
-        }
-    }
-
-    /// v1.4.7：原导航栏「年/月」切换（月份卡右上角胶囊）
-    private var yearMonthToggle: some View {
-        Button {
-            showYear.toggle()
-        } label: {
-            Text(showYear ? "月" : "年")
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(Color(uiColor: .tertiarySystemFill)))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(showYear ? "切换到月视图" : "切换到年视图")
-    }
 
     private func shiftMonth(_ delta: Int) {
         monthAnchor = DateHelpers.shift(monthAnchor, by: delta, of: .month)
@@ -208,7 +189,7 @@ struct CalendarView: View {
                                hint: "如有消费，记得补一笔哦")
             } else {
                 ForEach(selectedDayTransactions) { tx in
-                    // v1.4.5：取消点按编辑，左滑出「编辑 + 删除」（VStack 非 List，用自定义 SwipeActionRow）
+                    // 卡片内左滑：编辑 + 删除（同明细页）
                     SwipeActionRow(
                         onEdit: { editing = tx },
                         onDelete: {
@@ -230,71 +211,5 @@ struct CalendarView: View {
         let day = cal.component(.day, from: selectedDay)
         let weekdayIndex = (cal.component(.weekday, from: selectedDay) + 5) % 7
         return "\(month)月\(day)日 周\(DateHelpers.weekdayTitles[weekdayIndex])"
-    }
-
-    // MARK: - 年汇总
-
-    private var yearSummary: some View {
-        List {
-            Section {
-                PeriodNavHeader(
-                    title: DateHelpers.title(of: .year, for: monthAnchor),
-                    onPrev: { monthAnchor = DateHelpers.shift(monthAnchor, by: -1, of: .year) },
-                    onNext: { monthAnchor = DateHelpers.shift(monthAnchor, by: 1, of: .year) }
-                )
-                .overlay(alignment: .trailing) {
-                    yearMonthToggle
-                }
-                .padding(.vertical, 4)
-            }
-            ForEach(1...12, id: \.self) { month in
-                let row = monthTotals(year: yearValue, month: month)
-                Section {
-                    Button {
-                        var comps = DateComponents()
-                        comps.year = yearValue
-                        comps.month = month
-                        comps.day = 1
-                        if let date = Calendar.current.date(from: comps) {
-                            monthAnchor = date
-                            selectedDay = date
-                            showYear = false
-                        }
-                    } label: {
-                        HStack {
-                            Text("\(month)月")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("支 \(Money.string(fromCents: row.expense))")
-                                    .foregroundStyle(Theme.alert)
-                                Text("收 \(Money.string(fromCents: row.income))")
-                                    .foregroundStyle(Theme.income)
-                            }
-                            .font(.caption)
-                            .monospacedDigit()
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-    }
-
-    private var yearValue: Int {
-        Calendar.current.component(.year, from: monthAnchor)
-    }
-
-    private func monthTotals(year: Int, month: Int) -> (expense: Int64, income: Int64) {
-        var comps = DateComponents()
-        comps.year = year
-        comps.month = month
-        comps.day = 1
-        guard let date = Calendar.current.date(from: comps) else { return (0, 0) }
-        let range = DateHelpers.range(of: .month, containing: date)
-        let monthTransactions = LedgerService.transactions(transactions, in: range)
-        return LedgerService.totals(in: monthTransactions)
     }
 }
