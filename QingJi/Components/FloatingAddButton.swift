@@ -1,13 +1,16 @@
 import SwiftUI
 
-/// 右下角浮动记账按钮（文档 v1.4 / v1.5.0）：
+/// 浮动记账按钮（文档 v1.4 / v1.5.1）：
 /// - 点按展开 3 个弧形入口；点外部或再点 + 收起
-/// - v1.5.0 长按 0.3s 可拖动：拖动中自由跟随手指，松手水平磁吸回屏幕右缘，
-///   纵向停留在松手高度（归一化持久化，重启保留）
-/// - 弧形方向随高度自适应（y 为从屏幕底部量的归一化高度）：
-///   下部 y<0.3 → 左上扇 150°/120°/90°（默认）
-///   中部 0.3~0.7 → 左侧竖扇 210°/180°/150°（围绕正左均匀分布）
-///   上部 y>0.7 → 左下扇 210°/240°/270°（与下部镜像对称，均不紧贴屏幕边缘）
+/// - v1.5.1 拖动重构（小白点手感）：DragGesture(minimumDistance: 0) 零延迟全程跟手，
+///   可拖至屏幕任意处；松手位移 <12pt 判为点按，否则弹性贴回**最近的**左/右边缘，
+///   纵向停留（归一化持久化，重启保留）。旧版 LongPress sequenced Drag 在 0.3s 内
+///   移动即判定失败导致"拖不动"，已弃用。
+/// - 弧形方向随位置自适应（y 为从屏幕底部量的归一化高度），三档均在 90° 象限内
+///   以 45° 均匀排开（端点贴象限边界），左贴靠时水平镜像朝屏幕内侧：
+///   下部 y<0.3 → 上方象限 180°/135°/90°（截图/拍照/手动，左→上）
+///   中部 0.3~0.7 → 左侧象限 225°/180°/135°（围绕正左）
+///   上部 y>0.7 → 下方象限 180°/225°/270°（与下部镜像对称）
 struct FloatingAddButton: View {
     var onSelect: (AddSheet) -> Void
 
@@ -15,19 +18,23 @@ struct FloatingAddButton: View {
 
     /// FAB 中心纵向位置（屏幕高度归一化，从底部量），跨启动持久化
     @AppStorage("qingji.fab.yNormFromBottom") private var yNormFromBottom: Double = 0.14
-    /// 拖动中的实时位移（手势结束自动归零）
-    @GestureState private var dragTranslation: CGSize = .zero
+    /// v1.5.1 贴靠侧：true=右缘，false=左缘
+    @AppStorage("qingji.fab.sideRight") private var sideRight = true
+    /// 拖动中的实时位移（普通 @State：松手与停靠位在同一次动画里结算，避免回弹闪烁）
+    @State private var dragOffset: CGSize = .zero
 
     private let radius: CGFloat = 116
     private let mainSize: CGFloat = 58
     private let arcSize: CGFloat = 48
-    private let snapTrailing: CGFloat = 18
-    /// 顶部安全线（状态栏 + 余量）
-    private let dragMinY: CGFloat = 120
-    /// 底部安全线（Tab 栏之上 + 余量）
-    private let dragBottomMargin: CGFloat = 100
+    private let snapInset: CGFloat = 18
+    private let topSafe: CGFloat = 90
+    /// 底部安全线：FAB 中心距底 ≥160pt——否则弧形横向臂（180° 端点图标）会压在
+    /// Tab 栏上沿（y≈733 vs 栏顶≈740），视觉上"贴屏幕"（真机反馈）
+    private let bottomSafe: CGFloat = 160
+    /// 松手位移小于此值视为点按（非拖动）
+    private let tapThreshold: CGFloat = 12
 
-    // MARK: - 弧形区域
+    // MARK: - 弧形区域（90° 象限内 45° 均匀排开）
 
     private enum ArcRegion { case bottom, middle, top }
 
@@ -37,12 +44,16 @@ struct FloatingAddButton: View {
         return .bottom
     }
 
+    /// 右贴靠的基础角度；左贴靠时以竖直轴镜像（θ → 180°-θ），朝屏幕内侧展开
     private var arcAngles: [Double] {
+        let base: [Double]
         switch arcRegion {
-        case .bottom: return [150, 120, 90]   // 左上扇（默认）
-        case .middle: return [210, 180, 150]  // 左侧竖扇，围绕正左均匀 30°
-        case .top: return [210, 240, 270]     // 左下扇，与底部镜像对称
+        case .bottom: base = [180, 135, 90]   // 截图、拍照、手动：左 → 上
+        case .middle: base = [225, 180, 135]  // 左下 → 左上，围绕正左
+        case .top: base = [180, 225, 270]     // 左 → 下，与底部镜像对称
         }
+        guard !sideRight else { return base }
+        return base.map { ((180 - $0) + 360).truncatingRemainder(dividingBy: 360) }
     }
 
     private var arcItems: [(icon: String, hex: String, angle: Double, sheet: AddSheet)] {
@@ -80,47 +91,61 @@ struct FloatingAddButton: View {
                     mainButton(fabDragGesture(in: geo))
                 }
                 .zIndex(1)
-                .position(center(in: geo, translation: dragTranslation))
+                .position(liveCenter(in: geo))
             }
         }
         .animation(.spring(duration: 0.32), value: isExpanded)
-        .animation(.spring(duration: 0.35), value: yNormFromBottom) // 松手磁吸/弧向切换平滑过渡
+        .animation(.spring(duration: 0.35), value: yNormFromBottom)
     }
 
-    /// FAB 静止中心；拖动中叠加位移（x 允许左移跟随、右不越右缘；y 限制在安全区内）
-    private func center(in geo: GeometryProxy, translation: CGSize) -> CGPoint {
+    /// 静止停靠中心：x 贴当前侧边缘，y 按持久化的归一化高度（含安全区钳制）
+    private func restCenter(in geo: GeometryProxy) -> CGPoint {
         let h = geo.size.height
-        let restY = min(max((1 - yNormFromBottom) * h, dragMinY), h - dragBottomMargin)
-        let restX = geo.size.width - snapTrailing - mainSize / 2
-        let x = min(max(restX + translation.width, snapTrailing + mainSize / 2), restX)
-        let y = min(max(restY + translation.height, dragMinY), h - dragBottomMargin)
+        let y = min(max((1 - yNormFromBottom) * h, topSafe), h - bottomSafe)
+        let x = sideRight ? geo.size.width - snapInset - mainSize / 2
+                          : snapInset + mainSize / 2
         return CGPoint(x: x, y: y)
     }
 
-    // MARK: - 手势（长按 0.3s 拖动）
+    /// 拖动中的实时中心：停靠位 + 手指位移（钳制在安全区内，可到屏幕任意处）
+    private func liveCenter(in geo: GeometryProxy) -> CGPoint {
+        let rest = restCenter(in: geo)
+        let x = min(max(rest.x + dragOffset.width, snapInset + mainSize / 2),
+                    geo.size.width - snapInset - mainSize / 2)
+        let y = min(max(rest.y + dragOffset.height, topSafe), geo.size.height - bottomSafe)
+        return CGPoint(x: x, y: y)
+    }
+
+    // MARK: - 手势（小白点手感：零延迟跟手 + 贴边）
 
     private func fabDragGesture(in geo: GeometryProxy) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.3)
-            .sequenced(before: DragGesture(minimumDistance: 1))
-            .updating($dragTranslation) { value, state, _ in
-                switch value {
-                case .first(true):
-                    state = .zero
-                case .second(true, let drag?):
-                    state = drag.translation
-                    if isExpanded { isExpanded = false } // 拖动时收起菜单
-                default:
-                    state = .zero
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                dragOffset = value.translation
+                // 超过点按阈值才算真拖动：收起菜单（纯点按不动菜单，交给 onEnded 切换）
+                if hypot(value.translation.width, value.translation.height) >= tapThreshold,
+                   isExpanded {
+                    isExpanded = false
                 }
             }
             .onEnded { value in
-                guard case .second(true, let drag?) = value else { return }
-                let h = geo.size.height
-                let restY = min(max((1 - yNormFromBottom) * h, dragMinY), h - dragBottomMargin)
-                let newY = min(max(restY + drag.translation.height, dragMinY), h - dragBottomMargin)
-                // 只保留纵向结果；水平回落右缘（x 由 restX 决定）
-                withAnimation(.spring(duration: 0.35)) {
-                    yNormFromBottom = 1 - Double(newY / h)
+                let distance = hypot(value.translation.width, value.translation.height)
+                guard distance >= tapThreshold else {
+                    dragOffset = .zero
+                    isExpanded.toggle() // 小位移 = 点按：展开/收起
+                    return
+                }
+                let rest = restCenter(in: geo)
+                let finalY = min(max(rest.y + value.translation.height, topSafe),
+                                 geo.size.height - bottomSafe)
+                let finalX = rest.x + value.translation.width
+                let goRight = finalX >= geo.size.width / 2
+                // 拖动偏移清零与新停靠位在同一次弹性动画里结算：
+                // 视觉上从松手位置顺滑滑向最近边缘，无回跳
+                withAnimation(.spring(duration: 0.3)) {
+                    dragOffset = .zero
+                    sideRight = goRight
+                    yNormFromBottom = 1 - Double(finalY / geo.size.height)
                 }
             }
     }
@@ -137,9 +162,8 @@ struct FloatingAddButton: View {
         }
         .frame(width: mainSize, height: mainSize)
         .contentShape(Circle().inset(by: -8))
-        .onTapGesture { isExpanded.toggle() } // 快速点按：展开/收起（长按不会触发）
-        .gesture(dragGesture)                 // 长按 0.3s + 移动：拖动定位
-        .accessibilityLabel(isExpanded ? "收起记账菜单" : "记账菜单，长按可拖动")
+        .gesture(dragGesture)
+        .accessibilityLabel(isExpanded ? "收起记账菜单" : "记账菜单，可拖动")
         .accessibilityAddTraits(.isButton)
     }
 
